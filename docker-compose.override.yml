@@ -1,0 +1,14 @@
+# Локальная разработка — переопределяет docker-compose.yml
+services:
+  bot:
+    build: .
+    image: aa_bot:local
+    volumes:
+      - .:/app          # hot-reload: изменения сразу видны в контейнере
+      - /app/__pycache__
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+
+  db:
+    ports:
+      - "5432:5432"     # доступ к БД с хоста для psql / DBeaver

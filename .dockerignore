@@ -1,0 +1,13 @@
+.env
+.git
+.github
+__pycache__
+**/__pycache__
+*.pyc
+*.pyo
+*.pyd
+logs/
+*.log
+.gitignore
+README.md
+docker-compose.override.yml

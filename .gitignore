@@ -1,0 +1,57 @@
+# 🔹 Виртуальное окружение
+venv/
+.env/
+.venv/
+
+# 🔹 Переменные окружения
+.env
+.env.*
+
+# 🔹 Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# 🔹 Логи
+*.log
+
+# 🔹 SQLite / DB
+*.sqlite3
+db.sqlite3
+
+# 🔹 IDE / редакторы
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# 🔹 OS файлы
+.DS_Store
+Thumbs.db
+
+# 🔹 pytest / coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# 🔹 mypy / type checking
+.mypy_cache/
+.dmypy.json
+
+# 🔹 pip
+pip-log.txt
+pip-delete-this-directory.txt
+
+# 🔹 build / dist
+build/
+dist/
+*.egg-info/
+
+# 🔹 aiogram FSM storage (если используешь файл)
+*.json
+
+# 🔹 Docker (если есть)
+*.pid
+
+# 🔹 Jupyter (если вдруг)
+.ipynb_checkpoints

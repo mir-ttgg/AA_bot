@@ -1,0 +1,437 @@
+import random
+
+from aiogram import Router, F
+from aiogram.types import CallbackQuery
+from aiogram.fsm.context import FSMContext
+from aiogram.utils.keyboard import InlineKeyboardBuilder
+from loguru import logger
+
+from database.session import SessionLocal
+from database.crud import (
+    get_lessons,
+    get_lesson,
+    get_questions,
+    get_question_with_answers,
+    get_topics,
+    save_progress,
+    get_random_questions_for_quiz,
+)
+from keyboards.keyboards_user import (
+    user_topics_kb,
+    user_lessons_kb,
+    user_lesson_kb,
+    quiz_question_kb,
+    quiz_next_kb,
+    random_quiz_count_kb,
+    user_menu_kb,
+)
+from states import UserStates
+from services import emoji
+
+router = Router()
+
+# Сколько неправильных ответов показывать из пула
+WRONG_PER_QUESTION = 3
+
+
+def _pick_answers(answers: list) -> list:
+    """
+    Из пула ответов берёт 1 случайный правильный
+    и WRONG_PER_QUESTION случайных неправильных, перемешивает.
+    """
+    correct_pool = [a for a in answers if a.is_correct]
+    wrong_pool = [a for a in answers if not a.is_correct]
+
+    chosen = []
+    if correct_pool:
+        chosen.append(random.choice(correct_pool))
+    n_wrong = min(WRONG_PER_QUESTION, len(wrong_pool))
+    chosen.extend(random.sample(wrong_pool, n_wrong))
+    random.shuffle(chosen)
+    return chosen
+
+
+# ── Назад к стартовому меню ───────────────────────────────────────────────────
+
+@router.callback_query(F.data == "user:back_to_start")
+async def back_to_start(callback: CallbackQuery, state: FSMContext):
+    await state.clear()
+    text = "Выберите действие:"
+    if callback.message.photo:
+        try:
+            await callback.message.delete()
+        except Exception:
+            pass
+        await callback.message.answer(text, reply_markup=user_menu_kb())
+    else:
+        await callback.message.edit_text(text, reply_markup=user_menu_kb())
+
+
+# ── Список тем ────────────────────────────────────────────────────────────────
+
+@router.callback_query(F.data.startswith("user:topics:"))
+async def user_topics_handler(callback: CallbackQuery):
+    page = int(callback.data.split(":")[2])
+    async with SessionLocal() as session:
+        topics = await get_topics(session)
+
+    if not topics:
+        await callback.message.edit_text(
+            f"{emoji.EMOJI_WHITE_1} Темы ещё не добавлены. Загляни позже!"
+        )
+        return
+
+    await callback.message.edit_text(
+        f"{emoji.EMOJI_WHITE_1} <b>Выберите тему:</b>",
+        reply_markup=user_topics_kb(topics, page)
+    )
+
+
+# ── Список уроков ─────────────────────────────────────────────────────────────
+
+@router.callback_query(F.data.startswith("user:lessons:"))
+async def user_lessons_handler(callback: CallbackQuery):
+    parts = callback.data.split(":")
+    topic_id = int(parts[2])
+    page = int(parts[3])
+    async with SessionLocal() as session:
+        lessons = await get_lessons(session, topic_id)
+
+    if not lessons:
+        await callback.answer(
+            "В этой теме пока нет уроков", show_alert=True
+        )
+        return
+
+    await callback.message.edit_text(
+        f"{emoji.EMOJI_WHITE_2} <b>Выберите урок:</b>",
+        reply_markup=user_lessons_kb(topic_id, lessons, page)
+    )
+
+
+# ── Информация об уроке ───────────────────────────────────────────────────────
+
+@router.callback_query(F.data.startswith("user:lesson:"))
+async def user_lesson_handler(callback: CallbackQuery):
+    parts = callback.data.split(":")
+    lesson_id = int(parts[2])
+    topic_id = int(parts[3])
+    async with SessionLocal() as session:
+        lesson = await get_lesson(session, lesson_id)
+        questions = await get_questions(session, lesson_id)
+
+    if not lesson:
+        await callback.answer("Урок не найден", show_alert=True)
+        return
+
+    question_count = len(questions)
+    text = (
+        f"{emoji.EMOJI_WHITE_2} <b>{lesson.title}</b>\n\n"
+        f"Вопросов в тесте: <b>{question_count}</b>"
+    )
+    if question_count == 0:
+        text += "\n\n<i>В этом уроке пока нет вопросов.</i>"
+
+    await callback.message.edit_text(
+        text,
+        reply_markup=user_lesson_kb(lesson_id, topic_id, question_count)
+    )
+
+
+# ── Начать тест по уроку ──────────────────────────────────────────────────────
+
+@router.callback_query(F.data.startswith("user:start_quiz:"))
+async def start_quiz(callback: CallbackQuery, state: FSMContext):
+    lesson_id = int(callback.data.split(":")[2])
+    async with SessionLocal() as session:
+        questions = await get_questions(session, lesson_id)
+
+    if not questions:
+        await callback.answer("В уроке нет вопросов", show_alert=True)
+        return
+
+    question_ids = [q.id for q in questions]
+    await state.set_state(UserStates.in_quiz)
+    await state.update_data(
+        question_ids=question_ids,
+        current_index=0,
+        correct_count=0,
+        lesson_id=lesson_id,
+        quiz_mode="lesson",
+    )
+    logger.info(
+        "USER {} | Тест начат | lesson_id={}, вопросов={}",
+        callback.from_user.id, lesson_id, len(question_ids)
+    )
+    await _show_question(
+        callback, state, question_ids[0], 0, len(question_ids)
+    )
+
+
+# ── Случайный тест — меню выбора количества ───────────────────────────────────
+
+@router.callback_query(F.data == "user:random_quiz_menu")
+async def random_quiz_menu(callback: CallbackQuery):
+    await callback.message.edit_text(
+        "🎲 <b>Случайный тест</b>\n\n"
+        "Вопросы берутся из всей базы в случайном порядке.\n"
+        "Выберите количество вопросов:",
+        reply_markup=random_quiz_count_kb()
+    )
+
+
+# ── Случайный тест — старт ────────────────────────────────────────────────────
+
+@router.callback_query(F.data.startswith("user:random_quiz:"))
+async def start_random_quiz(callback: CallbackQuery, state: FSMContext):
+    count = int(callback.data.split(":")[2])
+    async with SessionLocal() as session:
+        questions = await get_random_questions_for_quiz(session, count)
+
+    if not questions:
+        await callback.answer(
+            "Недостаточно вопросов в базе для случайного теста.\n"
+            "Сначала добавьте вопросы с вариантами ответов.",
+            show_alert=True
+        )
+        return
+
+    question_ids = [q.id for q in questions]
+    await state.set_state(UserStates.in_quiz)
+    await state.update_data(
+        question_ids=question_ids,
+        current_index=0,
+        correct_count=0,
+        lesson_id=None,
+        quiz_mode="random",
+    )
+    logger.info(
+        "USER {} | Случайный тест начат | вопросов={}",
+        callback.from_user.id, len(question_ids)
+    )
+    await _show_question(
+        callback, state, question_ids[0], 0, len(question_ids)
+    )
+
+
+# ── Показать вопрос ───────────────────────────────────────────────────────────
+
+async def _show_question(
+    callback: CallbackQuery,
+    state: FSMContext,
+    question_id: int,
+    index: int,
+    total: int,
+):
+    async with SessionLocal() as session:
+        question = await get_question_with_answers(session, question_id)
+
+    if not question:
+        await _skip_question(callback, state, index, total)
+        return
+
+    display_answers = _pick_answers(question.answers)
+
+    if not display_answers:
+        await _skip_question(callback, state, index, total)
+        return
+
+    await state.update_data(
+        shown_answer_ids=[a.id for a in display_answers],
+        current_has_photo=bool(question.image_file_id),
+    )
+
+    text = (
+        f"❓ <b>Вопрос {index + 1}/{total}</b>\n\n"
+        f"{question.text}"
+    )
+    kb = quiz_question_kb(display_answers)
+
+    # Удаляем предыдущее сообщение и шлём новое
+    # (единственный способ переключаться между текстом и фото)
+    try:
+        await callback.message.delete()
+    except Exception:
+        pass
+
+    if question.image_file_id:
+        await callback.message.answer_photo(
+            photo=question.image_file_id,
+            caption=text,
+            reply_markup=kb,
+        )
+    else:
+        await callback.message.answer(text, reply_markup=kb)
+
+
+async def _skip_question(
+    callback: CallbackQuery,
+    state: FSMContext,
+    index: int,
+    total: int,
+):
+    """Пропустить вопрос без вариантов ответа."""
+    data = await state.get_data()
+    question_ids = data["question_ids"]
+    next_index = index + 1
+    if next_index < total:
+        await state.update_data(current_index=next_index)
+        await _show_question(
+            callback, state,
+            question_ids[next_index], next_index, total
+        )
+    else:
+        await _show_result(callback, state)
+
+
+# ── Обработка ответа ──────────────────────────────────────────────────────────
+
+@router.callback_query(
+    UserStates.in_quiz, F.data.startswith("user:answer:")
+)
+async def process_answer(callback: CallbackQuery, state: FSMContext):
+    answer_id = int(callback.data.split(":")[2])
+    data = await state.get_data()
+    question_ids = data["question_ids"]
+    current_index = data["current_index"]
+    correct_count = data["correct_count"]
+    question_id = question_ids[current_index]
+    total = len(question_ids)
+
+    async with SessionLocal() as session:
+        question = await get_question_with_answers(session, question_id)
+
+    # Находим выбранный и правильный среди показанных вариантов
+    shown_ids = set(data.get("shown_answer_ids", []))
+    shown = [a for a in question.answers if a.id in shown_ids]
+    chosen = next((a for a in shown if a.id == answer_id), None)
+    correct = next((a for a in shown if a.is_correct), None)
+    is_correct = chosen is not None and chosen.is_correct
+
+    if is_correct:
+        correct_count += 1
+
+    async with SessionLocal() as session:
+        await save_progress(
+            session,
+            user_id=callback.from_user.id,
+            question_id=question_id,
+            chosen_answer_id=answer_id,
+            is_correct=is_correct,
+        )
+
+    await state.update_data(correct_count=correct_count)
+    logger.debug(
+        "USER {} | Ответ | question_id={}, correct={}, score={}/{}",
+        callback.from_user.id, question_id, is_correct,
+        correct_count, total
+    )
+
+    is_last = (current_index + 1) >= total
+
+    if is_correct:
+        feedback = f"{emoji.EMOJI_YES} <b>Правильно!</b>"
+    else:
+        correct_text = correct.text if correct else "—"
+        chosen_text = chosen.text if chosen else "—"
+        feedback = (
+            f"{emoji.EMOJI_NO} <b>Неправильно!</b>\n"
+            f"Ваш ответ: {chosen_text}\n"
+            f"Правильный ответ: <b>{correct_text}</b>"
+        )
+
+    comment_block = (
+        f"\n\n💬 <i>{question.comment}</i>" if question.comment else ""
+    )
+    text = (
+        f"{emoji.EMOJI_WHITE_3} <b>Вопрос {current_index + 1}/{total}</b>\n\n"
+        f"{question.text}\n\n"
+        f"{feedback}{comment_block}"
+    )
+    if callback.message.photo:
+        await callback.message.edit_caption(
+            caption=text,
+            reply_markup=quiz_next_kb(is_last)
+        )
+    else:
+        await callback.message.edit_text(
+            text,
+            reply_markup=quiz_next_kb(is_last)
+        )
+
+
+# ── Следующий вопрос ──────────────────────────────────────────────────────────
+
+@router.callback_query(
+    UserStates.in_quiz, F.data == "user:next_question"
+)
+async def next_question(callback: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    question_ids = data["question_ids"]
+    next_index = data["current_index"] + 1
+    await state.update_data(current_index=next_index)
+    await _show_question(
+        callback, state,
+        question_ids[next_index], next_index, len(question_ids)
+    )
+
+
+# ── Результат ─────────────────────────────────────────────────────────────────
+
+@router.callback_query(
+    UserStates.in_quiz, F.data == "user:show_result"
+)
+async def show_result(callback: CallbackQuery, state: FSMContext):
+    await _show_result(callback, state)
+
+
+async def _show_result(callback: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    total = len(data["question_ids"])
+    correct = data["correct_count"]
+    lesson_id = data.get("lesson_id")
+    quiz_mode = data.get("quiz_mode", "lesson")
+    await state.clear()
+
+    pct = round(correct / total * 100) if total else 0
+    logger.info(
+        "USER {} | Тест завершён | режим={}, результат={}/{} ({}%)",
+        callback.from_user.id, quiz_mode, correct, total, pct
+    )
+
+    if pct == 100:
+        grade = "🏆 Отлично! Все ответы верные!"
+    elif pct >= 70:
+        grade = "👍 Хорошо! Продолжай в том же духе."
+    elif pct >= 40:
+        grade = "📚 Неплохо, но есть над чем поработать."
+    else:
+        grade = "💪 Не сдавайся — попробуй ещё раз!"
+
+    text = (
+        f"📊 <b>Результаты теста</b>\n\n"
+        f"Правильных ответов: <b>{correct}/{total}</b> ({pct}%)\n\n"
+        f"{grade}"
+    )
+    builder = InlineKeyboardBuilder()
+    if quiz_mode == "random":
+        builder.button(
+            text="🔄 Ещё случайный тест",
+            callback_data="user:random_quiz_menu"
+        )
+    elif lesson_id is not None:
+        builder.button(
+            text="🔄 Пройти ещё раз",
+            callback_data=f"user:start_quiz:{lesson_id}"
+        )
+    builder.button(text="📚 К темам", callback_data="user:topics:0")
+    builder.adjust(1)
+
+    if callback.message.photo:
+        await callback.message.edit_caption(
+            caption=text, reply_markup=builder.as_markup()
+        )
+    else:
+        await callback.message.edit_text(
+            text, reply_markup=builder.as_markup()
+        )

@@ -1,0 +1,10 @@
+[lint]
+select = ["E", "F", "W"]
+ignore = [
+    "E501",  # line too long
+    "E402",  # module level import not at top (setup_logging() должен идти первым)
+    "W291",  # trailing whitespace
+]
+
+[lint.per-file-ignores]
+"__init__.py" = ["F401"]
