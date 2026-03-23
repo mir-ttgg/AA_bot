@@ -12,6 +12,7 @@ def _total_pages(items: list) -> int:
     return max(0, (len(items) - 1) // PER_PAGE) if items else 0
 
 
+
 def _nav_row(
     items: list, page: int, prev_cb: str, next_cb: str
 ) -> list[InlineKeyboardButton]:
