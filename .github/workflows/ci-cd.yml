@@ -92,9 +92,6 @@ jobs:
             set -e
             cd ~/aa_bot
 
-            # Записываем .env из секрета GitHub
-            echo "${{ secrets.ENV_FILE }}" > .env
-
             # Логин в Docker Hub
             echo "${{ secrets.DOCKERHUB_TOKEN }}" | \
               docker login -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
