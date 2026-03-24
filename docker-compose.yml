@@ -1,5 +1,6 @@
 services:
   bot:
+    build: .
     image: ${IMAGE_NAME:-aa_bot}:latest
     restart: unless-stopped
     env_file: .env
