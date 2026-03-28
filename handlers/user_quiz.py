@@ -1,7 +1,7 @@
 import random
 
 from aiogram import Router, F
-from aiogram.types import CallbackQuery
+from aiogram.types import CallbackQuery, InputMediaPhoto
 from aiogram.fsm.context import FSMContext
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from loguru import logger
@@ -236,9 +236,13 @@ async def _show_question(
         await _skip_question(callback, state, index, total)
         return
 
+    data = await state.get_data()
+    prev_has_photo = data.get("current_has_photo", False)
+    next_has_photo = bool(question.image_file_id)
+
     await state.update_data(
         shown_answer_ids=[a.id for a in display_answers],
-        current_has_photo=bool(question.image_file_id),
+        current_has_photo=next_has_photo,
     )
 
     text = (
@@ -247,21 +251,29 @@ async def _show_question(
     )
     kb = quiz_question_kb(display_answers)
 
-    # Удаляем предыдущее сообщение и шлём новое
-    # (единственный способ переключаться между текстом и фото)
-    try:
-        await callback.message.delete()
-    except Exception:
-        pass
-
-    if question.image_file_id:
-        await callback.message.answer_photo(
-            photo=question.image_file_id,
-            caption=text,
+    if next_has_photo and prev_has_photo:
+        # Оба фото — редактируем медиа на месте
+        await callback.message.edit_media(
+            media=InputMediaPhoto(media=question.image_file_id, caption=text),
             reply_markup=kb,
         )
+    elif not next_has_photo and not prev_has_photo:
+        # Оба текст — просто редактируем текст на месте
+        await callback.message.edit_text(text, reply_markup=kb)
     else:
-        await callback.message.answer(text, reply_markup=kb)
+        # Переключение между фото и текстом — удаляем и шлём новое
+        try:
+            await callback.message.delete()
+        except Exception:
+            pass
+        if next_has_photo:
+            await callback.message.answer_photo(
+                photo=question.image_file_id,
+                caption=text,
+                reply_markup=kb,
+            )
+        else:
+            await callback.message.answer(text, reply_markup=kb)
 
 
 async def _skip_question(
