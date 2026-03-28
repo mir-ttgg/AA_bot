@@ -81,7 +81,9 @@ async def admin_cancel(callback: CallbackQuery, state: FSMContext):
                 )
                 kb = question_detail_kb(
                     question_id, lesson_id, topic_id,
-                    question.answers, has_comment=bool(question.comment)
+                    question.answers,
+                    has_comment=bool(question.comment),
+                    has_image=bool(question.image_file_id),
                 )
                 if callback.message.photo:
                     await callback.message.edit_caption(
@@ -838,6 +840,7 @@ async def start_edit_comment(callback: CallbackQuery, state: FSMContext):
     topic_id = int(parts[4])
     await state.set_state(AdminStates.waiting_edit_question_comment)
     await state.update_data(
+        back_to="question_detail",
         question_id=question_id,
         lesson_id=lesson_id,
         topic_id=topic_id,

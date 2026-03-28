@@ -237,6 +237,16 @@ async def _show_question(
         return
 
     data = await state.get_data()
+    extra_photo_msg_id = data.get("extra_photo_msg_id")
+    if extra_photo_msg_id:
+        try:
+            await callback.bot.delete_message(
+                chat_id=callback.message.chat.id,
+                message_id=extra_photo_msg_id,
+            )
+        except Exception:
+            pass
+        await state.update_data(extra_photo_msg_id=None)
     prev_has_photo = data.get("current_has_photo", False)
     next_has_photo = bool(question.image_file_id)
 
@@ -361,9 +371,16 @@ async def process_answer(callback: CallbackQuery, state: FSMContext):
         f"{feedback}{comment_block}"
     )
     if callback.message.photo:
-        await callback.message.edit_caption(
-            caption=text,
-            reply_markup=quiz_next_kb(is_last)
+        image_file_id = callback.message.photo[-1].file_id
+        try:
+            await callback.message.delete()
+        except Exception:
+            pass
+        await callback.message.answer(text, reply_markup=quiz_next_kb(is_last))
+        photo_msg = await callback.message.answer_photo(photo=image_file_id)
+        await state.update_data(
+            current_has_photo=False,
+            extra_photo_msg_id=photo_msg.message_id,
         )
     else:
         await callback.message.edit_text(
