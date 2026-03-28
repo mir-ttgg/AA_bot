@@ -1,5 +1,6 @@
 from aiogram.types import CallbackQuery
 from aiogram import Router, F
+from loguru import logger
 
 from database.session import SessionLocal
 from database.crud import (
@@ -99,16 +100,22 @@ async def question_detail_handler(callback: CallbackQuery):
         question_id, lesson_id, topic_id, question.answers
     )
     if question.image_file_id:
-        await callback.message.delete()
-        await callback.message.answer_photo(
-            photo=question.image_file_id,
-            caption=text,
-            reply_markup=kb,
-        )
-    else:
-        # Если предыдущее сообщение было с фото — удаляем и шлём текст
-        if callback.message.photo:
+        try:
             await callback.message.delete()
-            await callback.message.answer(text, reply_markup=kb)
-        else:
-            await callback.message.edit_text(text, reply_markup=kb)
+            await callback.message.answer_photo(
+                photo=question.image_file_id,
+                caption=text,
+                reply_markup=kb,
+            )
+            return
+        except Exception:
+            logger.warning(
+                "Невалидный file_id для вопроса id={}: {}",
+                question.id, question.image_file_id
+            )
+    # Показываем без фото (или фото не было)
+    if callback.message.photo:
+        await callback.message.delete()
+        await callback.message.answer(text, reply_markup=kb)
+    else:
+        await callback.message.edit_text(text, reply_markup=kb)
