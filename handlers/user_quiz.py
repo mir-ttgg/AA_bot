@@ -237,16 +237,6 @@ async def _show_question(
         return
 
     data = await state.get_data()
-    extra_photo_msg_id = data.get("extra_photo_msg_id")
-    if extra_photo_msg_id:
-        try:
-            await callback.bot.delete_message(
-                chat_id=callback.message.chat.id,
-                message_id=extra_photo_msg_id,
-            )
-        except Exception:
-            pass
-        await state.update_data(extra_photo_msg_id=None)
     prev_has_photo = data.get("current_has_photo", False)
     next_has_photo = bool(question.image_file_id)
 
@@ -365,24 +355,43 @@ async def process_answer(callback: CallbackQuery, state: FSMContext):
     comment_block = (
         f"\n\n💬 <i>{question.comment}</i>" if question.comment else ""
     )
-    text = (
-        f"{emoji.EMOJI_WHITE_3} <b>Вопрос {current_index + 1}/{total}</b>\n\n"
-        f"{question.text}\n\n"
-        f"{feedback}{comment_block}"
-    )
     if callback.message.photo:
-        image_file_id = callback.message.photo[-1].file_id
-        try:
-            await callback.message.delete()
-        except Exception:
-            pass
-        await callback.message.answer(text, reply_markup=quiz_next_kb(is_last))
-        photo_msg = await callback.message.answer_photo(photo=image_file_id)
-        await state.update_data(
-            current_has_photo=False,
-            extra_photo_msg_id=photo_msg.message_id,
+        _LIMIT = 1024
+        full = (
+            f"{emoji.EMOJI_WHITE_3} <b>Вопрос {current_index + 1}/{total}</b>\n\n"
+            f"{question.text}\n\n"
+            f"{feedback}{comment_block}"
+        )
+        short = f"{feedback}{comment_block}"
+        if len(full) <= _LIMIT:
+            caption = full
+        elif len(short) <= _LIMIT:
+            caption = short
+        else:
+            from config import ADMIN_IDS
+            for admin_id in ADMIN_IDS:
+                try:
+                    await callback.bot.send_message(
+                        chat_id=admin_id,
+                        text=(
+                            f"⚠️ <b>Ошибка вопроса #{question_id}</b>\n\n"
+                            "Caption превышает 1024 символа даже без текста вопроса. "
+                            "Сократите комментарий."
+                        ),
+                    )
+                except Exception:
+                    pass
+            caption = short[:_LIMIT - 1] + "…"
+        await callback.message.edit_caption(
+            caption=caption,
+            reply_markup=quiz_next_kb(is_last),
         )
     else:
+        text = (
+            f"{emoji.EMOJI_WHITE_3} <b>Вопрос {current_index + 1}/{total}</b>\n\n"
+            f"{question.text}\n\n"
+            f"{feedback}{comment_block}"
+        )
         await callback.message.edit_text(
             text,
             reply_markup=quiz_next_kb(is_last)

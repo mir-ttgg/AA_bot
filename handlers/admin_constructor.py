@@ -3,6 +3,8 @@ from aiogram.types import Message, CallbackQuery
 from aiogram.fsm.context import FSMContext
 from loguru import logger
 
+from config import ADMIN_IDS
+
 from database.session import SessionLocal
 from database.crud import (
     create_topic, get_topics, get_topic,
@@ -29,6 +31,38 @@ from keyboards.keyboards_admin import (
 from states import AdminStates
 
 router = Router()
+
+_CAPTION_LIMIT = 1024
+_CAPTION_OVERHEAD = 200  # запас на заголовок + текст фидбека
+
+
+async def _warn_caption_limit(
+    bot: Bot, chat_id: int, question_text: str, comment: str
+) -> None:
+    """Предупреждает админа если caption может превысить лимит Telegram."""
+    full_len = _CAPTION_OVERHEAD + len(question_text) + len(comment)
+    short_len = _CAPTION_OVERHEAD + len(comment)
+    if short_len > _CAPTION_LIMIT:
+        msg = (
+            "⚠️ <b>Внимание!</b> Комментарий слишком длинный — caption превысит "
+            f"лимит Telegram ({_CAPTION_LIMIT} симв.) даже без текста вопроса. "
+            "При ответе пользователя <b>будет ошибка</b>. Сократите комментарий."
+        )
+    elif full_len > _CAPTION_LIMIT:
+        msg = (
+            "⚠️ <b>Внимание!</b> Текст вопроса + комментарий превышают лимит "
+            f"caption Telegram ({_CAPTION_LIMIT} симв.). При ответе текст вопроса "
+            "будет скрыт — останется только результат и комментарий."
+        )
+    else:
+        return
+    await bot.send_message(chat_id=chat_id, text=msg)
+    for admin_id in ADMIN_IDS:
+        if admin_id != chat_id:
+            try:
+                await bot.send_message(chat_id=admin_id, text=msg)
+            except Exception:
+                pass
 
 
 # ── Отмена ────────────────────────────────────────────────────────────────────
@@ -296,6 +330,9 @@ async def _actually_create_question(
         "ADMIN | Создан вопрос id={} (lesson_id={}, фото={}, комментарий={})",
         question.id, lesson_id, bool(image_file_id), bool(comment)
     )
+
+    if image_file_id and comment:
+        await _warn_caption_limit(bot, chat_id, q_text, comment)
 
     text = (
         f"❓ <b>Вопрос создан!</b>\n\n{question.text}\n\n"
@@ -878,6 +915,9 @@ async def process_edit_comment(
     async with SessionLocal() as session:
         await update_question_comment(session, question_id, comment)
         question = await get_question_with_answers(session, question_id)
+
+    if is_photo:
+        await _warn_caption_limit(bot, message.chat.id, question.text, comment)
 
     answers_text = "".join(
         f"\n{'✅' if a.is_correct else '❌'} {a.text}"
