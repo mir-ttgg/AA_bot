@@ -97,23 +97,30 @@ async def question_detail_handler(callback: CallbackQuery):
            if question.answers else "\n\n<i>Вариантов ответов пока нет</i>")
     )
     kb = question_detail_kb(
-        question_id, lesson_id, topic_id, question.answers
+        question_id, lesson_id, topic_id, question.answers,
+        has_comment=bool(question.comment),
+        has_image=bool(question.image_file_id),
     )
     if question.image_file_id:
         try:
             await callback.message.delete()
+        except Exception:
+            pass
+        try:
             await callback.message.answer_photo(
                 photo=question.image_file_id,
                 caption=text,
                 reply_markup=kb,
             )
-            return
         except Exception:
             logger.warning(
                 "Невалидный file_id для вопроса id={}: {}",
                 question.id, question.image_file_id
             )
-    # Показываем без фото (или фото не было)
+            await callback.message.answer(text, reply_markup=kb)
+        return
+
+    # Нет фото — редактируем или пересылаем
     if callback.message.photo:
         await callback.message.delete()
         await callback.message.answer(text, reply_markup=kb)

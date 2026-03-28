@@ -144,6 +144,7 @@ def question_detail_kb(
     topic_id: int,
     answers: list,
     has_comment: bool = False,
+    has_image: bool = False,
 ) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     for ans in answers:
@@ -168,6 +169,13 @@ def question_detail_kb(
         text=comment_label,
         callback_data=(
             f"edit:comment:{question_id}:{lesson_id}:{topic_id}"
+        )
+    ))
+    image_label = "🖼 Изменить фото" if has_image else "🖼 Добавить фото"
+    builder.row(InlineKeyboardButton(
+        text=image_label,
+        callback_data=(
+            f"edit:image:{question_id}:{lesson_id}:{topic_id}"
         )
     ))
     builder.row(
@@ -253,6 +261,18 @@ def skip_image_kb() -> InlineKeyboardMarkup:
         text="⏭ Пропустить (без фото)",
         callback_data="admin:skip_image"
     )
+    builder.button(text="❌ Отмена", callback_data="admin:cancel")
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def edit_image_kb(has_image: bool = False) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    if has_image:
+        builder.button(
+            text="🗑 Удалить фото",
+            callback_data="admin:remove_image"
+        )
     builder.button(text="❌ Отмена", callback_data="admin:cancel")
     builder.adjust(1)
     return builder.as_markup()

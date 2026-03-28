@@ -11,7 +11,7 @@ from database.crud import (
     create_answer, get_answer, update_answer, delete_answer,
     get_question_with_answers,
     delete_topic, delete_lesson, delete_question,
-    update_question_comment,
+    update_question_comment, update_question_image,
 )
 from keyboards.keyboards_admin import (
     topics_kb,
@@ -21,6 +21,7 @@ from keyboards.keyboards_admin import (
     answer_actions_kb,
     cancel_kb,
     skip_image_kb,
+    edit_image_kb,
     skip_comment_kb,
     answer_correct_kb,
     confirm_delete_kb,
@@ -300,7 +301,9 @@ async def _actually_create_question(
     )
     kb = question_detail_kb(
         question.id, lesson_id, topic_id,
-        question.answers, has_comment=bool(question.comment)
+        question.answers,
+        has_comment=bool(question.comment),
+        has_image=bool(question.image_file_id),
     )
 
     if image_file_id:
@@ -469,7 +472,9 @@ async def process_answer_correct(
     )
     kb = question_detail_kb(
         question_id, lesson_id, topic_id,
-        question.answers, has_comment=bool(question.comment)
+        question.answers,
+        has_comment=bool(question.comment),
+        has_image=bool(question.image_file_id),
     )
     if callback.message.photo:
         await callback.message.edit_caption(caption=text, reply_markup=kb)
@@ -812,7 +817,9 @@ async def do_delete_answer(callback: CallbackQuery):
     )
     kb = question_detail_kb(
         question_id, lesson_id, topic_id,
-        question.answers, has_comment=bool(question.comment)
+        question.answers,
+        has_comment=bool(question.comment),
+        has_image=bool(question.image_file_id),
     )
     if callback.message.photo:
         await callback.message.edit_caption(caption=text, reply_markup=kb)
@@ -880,7 +887,9 @@ async def process_edit_comment(
     )
     kb = question_detail_kb(
         question_id, lesson_id, topic_id,
-        question.answers, has_comment=bool(question.comment)
+        question.answers,
+        has_comment=bool(question.comment),
+        has_image=bool(question.image_file_id),
     )
     if is_photo:
         await bot.edit_message_caption(
@@ -921,10 +930,129 @@ async def skip_edit_comment(callback: CallbackQuery, state: FSMContext):
     )
     kb = question_detail_kb(
         question_id, lesson_id, topic_id,
-        question.answers, has_comment=False
+        question.answers,
+        has_comment=False,
+        has_image=bool(question.image_file_id),
     )
     if is_photo:
         await callback.message.edit_caption(caption=text, reply_markup=kb)
     else:
         await callback.message.edit_text(text, reply_markup=kb)
     await callback.answer("Комментарий удалён")
+
+
+# ── Изменить фото вопроса ─────────────────────────────────────────────────────
+
+@router.callback_query(F.data.startswith("edit:image:"))
+async def start_edit_image(callback: CallbackQuery, state: FSMContext):
+    parts = callback.data.split(":")
+    question_id = int(parts[2])
+    lesson_id = int(parts[3])
+    topic_id = int(parts[4])
+    has_image = bool(callback.message.photo)
+    await state.set_state(AdminStates.waiting_edit_question_image)
+    await state.update_data(
+        back_to="question_detail",
+        question_id=question_id,
+        lesson_id=lesson_id,
+        topic_id=topic_id,
+        message_id=callback.message.message_id,
+        is_photo_message=has_image,
+    )
+    text = "🖼 Отправьте новое фото для вопроса:"
+    if has_image:
+        await callback.message.edit_caption(
+            caption=text, reply_markup=edit_image_kb(has_image=True)
+        )
+    else:
+        await callback.message.edit_text(
+            text, reply_markup=edit_image_kb(has_image=False)
+        )
+
+
+@router.message(AdminStates.waiting_edit_question_image, F.photo)
+async def process_edit_image(
+    message: Message, state: FSMContext, bot: Bot
+):
+    data = await state.get_data()
+    question_id = data["question_id"]
+    lesson_id = data["lesson_id"]
+    topic_id = data["topic_id"]
+    msg_id = data["message_id"]
+    file_id = message.photo[-1].file_id
+    await message.delete()
+    await state.clear()
+
+    async with SessionLocal() as session:
+        await update_question_image(session, question_id, file_id)
+        question = await get_question_with_answers(session, question_id)
+
+    answers_text = "".join(
+        f"\n{'✅' if a.is_correct else '❌'} {a.text}"
+        for a in question.answers
+    )
+    text = (
+        f"❓ <b>Вопрос:</b>\n{question.text}"
+        + (f"\n\n<b>Варианты:</b>{answers_text}"
+           if question.answers else "\n\n<i>Вариантов нет</i>")
+    )
+    kb = question_detail_kb(
+        question_id, lesson_id, topic_id,
+        question.answers,
+        has_comment=bool(question.comment),
+        has_image=True,
+    )
+    logger.info(
+        "ADMIN {} | Фото вопроса id={} обновлено",
+        message.from_user.id, question_id
+    )
+    await bot.delete_message(chat_id=message.chat.id, message_id=msg_id)
+    await bot.send_photo(
+        chat_id=message.chat.id,
+        photo=file_id,
+        caption=text,
+        reply_markup=kb,
+    )
+
+
+@router.callback_query(
+    AdminStates.waiting_edit_question_image,
+    F.data == "admin:remove_image"
+)
+async def remove_question_image(callback: CallbackQuery, state: FSMContext, bot: Bot):
+    data = await state.get_data()
+    question_id = data["question_id"]
+    lesson_id = data["lesson_id"]
+    topic_id = data["topic_id"]
+    msg_id = data["message_id"]
+    await state.clear()
+
+    async with SessionLocal() as session:
+        await update_question_image(session, question_id, None)
+        question = await get_question_with_answers(session, question_id)
+
+    answers_text = "".join(
+        f"\n{'✅' if a.is_correct else '❌'} {a.text}"
+        for a in question.answers
+    )
+    text = (
+        f"❓ <b>Вопрос:</b>\n{question.text}"
+        + (f"\n\n<b>Варианты:</b>{answers_text}"
+           if question.answers else "\n\n<i>Вариантов нет</i>")
+    )
+    kb = question_detail_kb(
+        question_id, lesson_id, topic_id,
+        question.answers,
+        has_comment=bool(question.comment),
+        has_image=False,
+    )
+    logger.info(
+        "ADMIN {} | Фото вопроса id={} удалено",
+        callback.from_user.id, question_id
+    )
+    await bot.delete_message(
+        chat_id=callback.message.chat.id, message_id=msg_id
+    )
+    await callback.message.answer(text, reply_markup=kb)
+    await callback.answer("Фото удалено")
+

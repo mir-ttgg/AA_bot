@@ -11,6 +11,7 @@ class AdminStates(StatesGroup):
     waiting_answer_text = State()
     waiting_answer_correct = State()
     waiting_edit_answer_text = State()
+    waiting_edit_question_image = State()
 
 
 class UserStates(StatesGroup):

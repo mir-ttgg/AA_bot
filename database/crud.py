@@ -119,6 +119,17 @@ async def update_question_comment(
     return True
 
 
+async def update_question_image(
+    session: AsyncSession, question_id: int, image_file_id: str | None
+) -> bool:
+    question = await session.get(Question, question_id)
+    if not question:
+        return False
+    question.image_file_id = image_file_id
+    await session.commit()
+    return True
+
+
 async def get_questions(session: AsyncSession, lesson_id: int) -> list[Question]:
     result = await session.execute(
         select(Question)
