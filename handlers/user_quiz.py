@@ -35,8 +35,8 @@ def _pick_answers(answers: list) -> tuple[list, int]:
     """
     Выбирает варианты для вопроса в зависимости от числа правильных ответов:
       1 правильный → 4 варианта (1 верный + 3 неверных)
-      2 правильных → 6 вариантов (2 верных + 4 неверных)
-      3+ правильных → 8 вариантов (3 верных + 5 неверных)
+      2 правильных → 5 вариантов (2 верных + 3 неверных)
+      3+ правильных → 6 вариантов (3 верных + 3 неверных)
     Возвращает (список вариантов, кол-во правильных).
     """
     correct_pool = [a for a in answers if a.is_correct]
@@ -46,7 +46,7 @@ def _pick_answers(answers: list) -> tuple[list, int]:
     if n_correct == 0:
         return [], 0
 
-    n_wrong = n_correct + 2  # 1→3, 2→4, 3→5
+    n_wrong = 3  # всегда 3 неверных варианта
     chosen_correct = random.sample(correct_pool, n_correct)
     chosen_wrong = random.sample(wrong_pool, min(n_wrong, len(wrong_pool)))
 
