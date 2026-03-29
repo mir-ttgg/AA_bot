@@ -31,6 +31,18 @@ from services import emoji
 router = Router()
 
 
+async def _safe_edit(callback: CallbackQuery, text: str, **kwargs):
+    """edit_text или delete+answer, если сообщение содержит фото."""
+    if callback.message.photo:
+        try:
+            await callback.message.delete()
+        except Exception:
+            pass
+        await callback.message.answer(text, **kwargs)
+    else:
+        await callback.message.edit_text(text, **kwargs)
+
+
 def _pick_answers(answers: list) -> tuple[list, int]:
     """
     Выбирает варианты для вопроса в зависимости от числа правильных ответов:
@@ -80,12 +92,11 @@ async def user_topics_handler(callback: CallbackQuery):
         topics = await get_topics(session)
 
     if not topics:
-        await callback.message.edit_text(
-            f"{emoji.EMOJI_WHITE_1} Темы ещё не добавлены. Загляни позже!"
-        )
+        await _safe_edit(callback, f"{emoji.EMOJI_WHITE_1} Темы ещё не добавлены. Загляни позже!")
         return
 
-    await callback.message.edit_text(
+    await _safe_edit(
+        callback,
         f"{emoji.EMOJI_WHITE_1} <b>Выберите тему:</b>",
         reply_markup=user_topics_kb(topics, page)
     )
@@ -107,7 +118,8 @@ async def user_lessons_handler(callback: CallbackQuery):
         )
         return
 
-    await callback.message.edit_text(
+    await _safe_edit(
+        callback,
         f"{emoji.EMOJI_WHITE_2} <b>Выберите урок:</b>",
         reply_markup=user_lessons_kb(topic_id, lessons, page)
     )
@@ -136,7 +148,8 @@ async def user_lesson_handler(callback: CallbackQuery):
     if question_count == 0:
         text += "\n\n<i>В этом уроке пока нет вопросов.</i>"
 
-    await callback.message.edit_text(
+    await _safe_edit(
+        callback,
         text,
         reply_markup=user_lesson_kb(lesson_id, topic_id, question_count)
     )
@@ -176,7 +189,8 @@ async def start_quiz(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data == "user:random_quiz_menu")
 async def random_quiz_menu(callback: CallbackQuery):
-    await callback.message.edit_text(
+    await _safe_edit(
+        callback,
         "🎲 <b>Случайный тест</b>\n\n"
         "Вопросы берутся из всей базы в случайном порядке.\n"
         "Выберите количество вопросов:",
