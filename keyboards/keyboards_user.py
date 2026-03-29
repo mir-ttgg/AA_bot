@@ -118,14 +118,30 @@ def user_lesson_kb(
     return builder.as_markup()
 
 
-def quiz_question_kb(answers: list) -> InlineKeyboardMarkup:
+def quiz_question_kb(
+    answers: list,
+    n_correct: int = 1,
+    selected_ids: list = None,
+) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
+    selected_set = set(selected_ids or [])
     for ans in answers:
-        builder.button(
-            text=ans.text,
-            callback_data=f"user:answer:{ans.id}"
-        )
+        if n_correct == 1:
+            builder.button(
+                text=ans.text,
+                callback_data=f"user:answer:{ans.id}"
+            )
+        else:
+            prefix = "✅ " if ans.id in selected_set else ""
+            builder.button(
+                text=f"{prefix}{ans.text}",
+                callback_data=f"user:toggle:{ans.id}"
+            )
     builder.adjust(1)
+    if n_correct > 1:
+        builder.row(InlineKeyboardButton(
+            text="✔️ Ответить", callback_data="user:submit_answers"
+        ))
     builder.row(InlineKeyboardButton(
         text="В меню", callback_data="user:back_to_start"
     ))

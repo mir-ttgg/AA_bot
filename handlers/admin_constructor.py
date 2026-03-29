@@ -3,8 +3,6 @@ from aiogram.types import Message, CallbackQuery
 from aiogram.fsm.context import FSMContext
 from loguru import logger
 
-from config import ADMIN_IDS
-
 from database.session import SessionLocal
 from database.crud import (
     create_topic, get_topics, get_topic,
@@ -57,12 +55,6 @@ async def _warn_caption_limit(
     else:
         return
     await bot.send_message(chat_id=chat_id, text=msg)
-    for admin_id in ADMIN_IDS:
-        if admin_id != chat_id:
-            try:
-                await bot.send_message(chat_id=admin_id, text=msg)
-            except Exception:
-                pass
 
 
 # ── Отмена ────────────────────────────────────────────────────────────────────

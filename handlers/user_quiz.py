@@ -30,25 +30,29 @@ from services import emoji
 
 router = Router()
 
-# Сколько неправильных ответов показывать из пула
-WRONG_PER_QUESTION = 3
 
-
-def _pick_answers(answers: list) -> list:
+def _pick_answers(answers: list) -> tuple[list, int]:
     """
-    Из пула ответов берёт 1 случайный правильный
-    и WRONG_PER_QUESTION случайных неправильных, перемешивает.
+    Выбирает варианты для вопроса в зависимости от числа правильных ответов:
+      1 правильный → 4 варианта (1 верный + 3 неверных)
+      2 правильных → 6 вариантов (2 верных + 4 неверных)
+      3+ правильных → 8 вариантов (3 верных + 5 неверных)
+    Возвращает (список вариантов, кол-во правильных).
     """
     correct_pool = [a for a in answers if a.is_correct]
     wrong_pool = [a for a in answers if not a.is_correct]
 
-    chosen = []
-    if correct_pool:
-        chosen.append(random.choice(correct_pool))
-    n_wrong = min(WRONG_PER_QUESTION, len(wrong_pool))
-    chosen.extend(random.sample(wrong_pool, n_wrong))
+    n_correct = min(len(correct_pool), 3)
+    if n_correct == 0:
+        return [], 0
+
+    n_wrong = n_correct + 2  # 1→3, 2→4, 3→5
+    chosen_correct = random.sample(correct_pool, n_correct)
+    chosen_wrong = random.sample(wrong_pool, min(n_wrong, len(wrong_pool)))
+
+    chosen = chosen_correct + chosen_wrong
     random.shuffle(chosen)
-    return chosen
+    return chosen, n_correct
 
 
 # ── Назад к стартовому меню ───────────────────────────────────────────────────
@@ -230,7 +234,7 @@ async def _show_question(
         await _skip_question(callback, state, index, total)
         return
 
-    display_answers = _pick_answers(question.answers)
+    display_answers, n_correct = _pick_answers(question.answers)
 
     if not display_answers:
         await _skip_question(callback, state, index, total)
@@ -242,6 +246,8 @@ async def _show_question(
 
     await state.update_data(
         shown_answer_ids=[a.id for a in display_answers],
+        n_correct=n_correct,
+        selected_ids=[],
         current_has_photo=next_has_photo,
     )
 
@@ -249,7 +255,7 @@ async def _show_question(
         f"❓ <b>Вопрос {index + 1}/{total}</b>\n\n"
         f"{question.text}"
     )
-    kb = quiz_question_kb(display_answers)
+    kb = quiz_question_kb(display_answers, n_correct=n_correct, selected_ids=[])
 
     if next_has_photo and prev_has_photo:
         # Оба фото — редактируем медиа на месте
@@ -395,6 +401,132 @@ async def process_answer(callback: CallbackQuery, state: FSMContext):
         await callback.message.edit_text(
             text,
             reply_markup=quiz_next_kb(is_last)
+        )
+
+
+# ── Переключение варианта (множественный выбор) ───────────────────────────────
+
+@router.callback_query(
+    UserStates.in_quiz, F.data.startswith("user:toggle:")
+)
+async def toggle_answer(callback: CallbackQuery, state: FSMContext):
+    answer_id = int(callback.data.split(":")[2])
+    data = await state.get_data()
+    selected_ids: list = list(data.get("selected_ids", []))
+
+    if answer_id in selected_ids:
+        selected_ids.remove(answer_id)
+    else:
+        selected_ids.append(answer_id)
+
+    await state.update_data(selected_ids=selected_ids)
+
+    shown_ids = data.get("shown_answer_ids", [])
+    n_correct = data.get("n_correct", 1)
+    question_id = data["question_ids"][data["current_index"]]
+
+    async with SessionLocal() as session:
+        question = await get_question_with_answers(session, question_id)
+
+    order = {aid: i for i, aid in enumerate(shown_ids)}
+    shown = sorted(
+        [a for a in question.answers if a.id in set(shown_ids)],
+        key=lambda a: order.get(a.id, 0),
+    )
+    kb = quiz_question_kb(shown, n_correct=n_correct, selected_ids=selected_ids)
+    await callback.message.edit_reply_markup(reply_markup=kb)
+    await callback.answer()
+
+
+# ── Отправка ответов (множественный выбор) ────────────────────────────────────
+
+@router.callback_query(
+    UserStates.in_quiz, F.data == "user:submit_answers"
+)
+async def submit_answers(callback: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    selected_ids: list = data.get("selected_ids", [])
+
+    if not selected_ids:
+        await callback.answer("Выберите хотя бы один ответ!", show_alert=True)
+        return
+
+    question_ids = data["question_ids"]
+    current_index = data["current_index"]
+    correct_count = data["correct_count"]
+    question_id = question_ids[current_index]
+    total = len(question_ids)
+    shown_ids = set(data.get("shown_answer_ids", []))
+
+    async with SessionLocal() as session:
+        question = await get_question_with_answers(session, question_id)
+
+    shown = [a for a in question.answers if a.id in shown_ids]
+    correct_shown = [a for a in shown if a.is_correct]
+    correct_shown_ids = {a.id for a in correct_shown}
+    is_correct = set(selected_ids) == correct_shown_ids
+
+    if is_correct:
+        correct_count += 1
+
+    async with SessionLocal() as session:
+        await save_progress(
+            session,
+            user_id=callback.from_user.id,
+            question_id=question_id,
+            chosen_answer_id=selected_ids[0] if selected_ids else None,
+            is_correct=is_correct,
+        )
+
+    await state.update_data(correct_count=correct_count)
+    logger.debug(
+        "USER {} | Множ. ответ | question_id={}, correct={}, score={}/{}",
+        callback.from_user.id, question_id, is_correct,
+        correct_count, total
+    )
+
+    is_last = (current_index + 1) >= total
+
+    if is_correct:
+        feedback = f"{emoji.EMOJI_YES} <b>Правильно!</b>"
+    else:
+        correct_texts = ", ".join(
+            f"<b>{a.text}</b>" for a in correct_shown
+        )
+        feedback = (
+            f"{emoji.EMOJI_NO} <b>Неправильно!</b>\n"
+            f"Правильные ответы: {correct_texts}"
+        )
+
+    comment_block = (
+        f"\n\n💬 <i>{question.comment}</i>" if question.comment else ""
+    )
+    if callback.message.photo:
+        _LIMIT = 1024
+        full = (
+            f"{emoji.EMOJI_WHITE_3} "
+            f"<b>Вопрос {current_index + 1}/{total}</b>\n\n"
+            f"{question.text}\n\n"
+            f"{feedback}{comment_block}"
+        )
+        short = f"{feedback}{comment_block}"
+        caption = (
+            full if len(full) <= _LIMIT
+            else short if len(short) <= _LIMIT
+            else short[:_LIMIT - 1] + "…"
+        )
+        await callback.message.edit_caption(
+            caption=caption, reply_markup=quiz_next_kb(is_last)
+        )
+    else:
+        text = (
+            f"{emoji.EMOJI_WHITE_3} "
+            f"<b>Вопрос {current_index + 1}/{total}</b>\n\n"
+            f"{question.text}\n\n"
+            f"{feedback}{comment_block}"
+        )
+        await callback.message.edit_text(
+            text, reply_markup=quiz_next_kb(is_last)
         )
 
 
