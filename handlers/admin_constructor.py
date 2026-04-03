@@ -68,25 +68,34 @@ async def admin_cancel(callback: CallbackQuery, state: FSMContext):
     async with SessionLocal() as session:
         if back_to == "topics":
             topics = await get_topics(session)
-            await callback.message.edit_text(
-                "📚 <b>Темы:</b>",
-                reply_markup=topics_kb(topics)
-            )
+            kb = topics_kb(topics)
+            if callback.message.photo:
+                await callback.message.edit_caption(caption="📚 <b>Темы:</b>", reply_markup=kb)
+            else:
+                await callback.message.edit_text("📚 <b>Темы:</b>", reply_markup=kb)
         elif back_to == "lessons":
             topic_id = data["topic_id"]
             lessons = await get_lessons(session, topic_id)
-            await callback.message.edit_text(
-                "📖 <b>Уроки:</b>",
-                reply_markup=lessons_kb(topic_id, lessons)
-            )
+            kb = lessons_kb(topic_id, lessons)
+            if callback.message.photo:
+                await callback.message.edit_caption(caption="📖 <b>Уроки:</b>", reply_markup=kb)
+            else:
+                await callback.message.edit_text("📖 <b>Уроки:</b>", reply_markup=kb)
         elif back_to == "questions":
             lesson_id = data["lesson_id"]
             topic_id = data["topic_id"]
             questions = await get_questions(session, lesson_id)
-            await callback.message.edit_text(
-                "❓ <b>Вопросы:</b>",
-                reply_markup=questions_kb(lesson_id, topic_id, questions)
-            )
+            kb = questions_kb(lesson_id, topic_id, questions)
+            if callback.message.photo:
+                await callback.message.edit_caption(
+                    caption="❓ <b>Вопросы:</b>",
+                    reply_markup=kb
+                )
+            else:
+                await callback.message.edit_text(
+                    "❓ <b>Вопросы:</b>",
+                    reply_markup=kb
+                )
         elif back_to == "question_detail":
             question_id = data["question_id"]
             lesson_id = data["lesson_id"]
