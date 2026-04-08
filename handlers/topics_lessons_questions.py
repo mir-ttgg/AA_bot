@@ -1,5 +1,6 @@
 from aiogram.types import CallbackQuery
 from aiogram import Router, F
+from aiogram.exceptions import TelegramBadRequest
 from loguru import logger
 
 from database.session import SessionLocal
@@ -71,7 +72,10 @@ async def questions_handler(callback: CallbackQuery):
         await callback.message.delete()
         await callback.message.answer(f"{emoji.EMOJI_WHITE_3} <b>Вопросы:</b>", reply_markup=kb)
     else:
-        await callback.message.edit_text(f"{emoji.EMOJI_WHITE_3}  <b>Вопросы:</b>", reply_markup=kb)
+        try:
+            await callback.message.edit_text(f"{emoji.EMOJI_WHITE_3}  <b>Вопросы:</b>", reply_markup=kb)
+        except TelegramBadRequest:
+            pass
 
 
 @router.callback_query(F.data.startswith("question_detail:"))

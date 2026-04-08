@@ -65,6 +65,8 @@ def setup_logging() -> None:
         compression="zip",
         encoding="utf-8",
         enqueue=True,
+        backtrace=False,
+        diagnose=False,
     )
 
     # Консоль — по уровню из .env (по умолчанию INFO)
@@ -74,6 +76,8 @@ def setup_logging() -> None:
         format=LOG_FORMAT,
         colorize=True,
         enqueue=True,
+        backtrace=False,
+        diagnose=False,
     )
 
     # Подключаем stdlib logging → loguru
