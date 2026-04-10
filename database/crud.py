@@ -24,6 +24,22 @@ async def get_topics(session: AsyncSession) -> list[Topic]:
     return list(result.scalars().all())
 
 
+async def get_topics_with_questions(session: AsyncSession) -> list[Topic]:
+    """Возвращает только темы, в которых есть хотя бы один вопрос."""
+    result = await session.execute(
+        select(Topic)
+        .where(
+            Topic.id.in_(
+                select(Lesson.topic_id)
+                .join(Question, Question.lesson_id == Lesson.id)
+                .distinct()
+            )
+        )
+        .order_by(Topic.id)
+    )
+    return list(result.scalars().all())
+
+
 async def get_topic(session: AsyncSession, topic_id: int) -> Topic | None:
     return await session.get(Topic, topic_id)
 

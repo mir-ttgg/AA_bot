@@ -12,7 +12,7 @@ from database.crud import (
     get_lesson,
     get_questions,
     get_question_with_answers,
-    get_topics,
+    get_topics_with_questions,
     save_progress,
     get_random_questions_for_topic,
 )
@@ -89,7 +89,7 @@ async def back_to_start(callback: CallbackQuery, state: FSMContext):
 async def user_topics_handler(callback: CallbackQuery):
     page = int(callback.data.split(":")[2])
     async with SessionLocal() as session:
-        topics = await get_topics(session)
+        topics = await get_topics_with_questions(session)
 
     if not topics:
         await _safe_edit(callback, f"{emoji.EMOJI_WHITE_1} Темы ещё не добавлены. Загляни позже!")
