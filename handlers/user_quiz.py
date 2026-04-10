@@ -189,7 +189,7 @@ async def start_quiz(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data.startswith("user:random_quiz_menu:"))
 async def random_quiz_menu(callback: CallbackQuery):
-    topic_id = int(callback.data.split(":")[3])
+    topic_id = int(callback.data.split(":")[2])
     await _safe_edit(
         callback,
         "🎲 <b>Случайный тест</b>\n\n"
