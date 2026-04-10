@@ -14,7 +14,7 @@ from database.crud import (
     get_question_with_answers,
     get_topics,
     save_progress,
-    get_random_questions_for_quiz,
+    get_random_questions_for_topic,
 )
 from keyboards.keyboards_user import (
     user_topics_kb,
@@ -187,14 +187,15 @@ async def start_quiz(callback: CallbackQuery, state: FSMContext):
 
 # ── Случайный тест — меню выбора количества ───────────────────────────────────
 
-@router.callback_query(F.data == "user:random_quiz_menu")
+@router.callback_query(F.data.startswith("user:random_quiz_menu:"))
 async def random_quiz_menu(callback: CallbackQuery):
+    topic_id = int(callback.data.split(":")[3])
     await _safe_edit(
         callback,
         "🎲 <b>Случайный тест</b>\n\n"
-        "Вопросы берутся из всей базы в случайном порядке.\n"
+        "Вопросы берутся из всех уроков этой темы в случайном порядке.\n"
         "Выберите количество вопросов:",
-        reply_markup=random_quiz_count_kb()
+        reply_markup=random_quiz_count_kb(topic_id)
     )
 
 
@@ -202,13 +203,15 @@ async def random_quiz_menu(callback: CallbackQuery):
 
 @router.callback_query(F.data.startswith("user:random_quiz:"))
 async def start_random_quiz(callback: CallbackQuery, state: FSMContext):
-    count = int(callback.data.split(":")[2])
+    parts = callback.data.split(":")
+    topic_id = int(parts[2])
+    count = int(parts[3])
     async with SessionLocal() as session:
-        questions = await get_random_questions_for_quiz(session, count)
+        questions = await get_random_questions_for_topic(session, topic_id, count)
 
     if not questions:
         await callback.answer(
-            "Недостаточно вопросов в базе для случайного теста.\n"
+            "Недостаточно вопросов в этой теме для случайного теста.\n"
             "Сначала добавьте вопросы с вариантами ответов.",
             show_alert=True
         )
@@ -222,10 +225,11 @@ async def start_random_quiz(callback: CallbackQuery, state: FSMContext):
         correct_count=0,
         lesson_id=None,
         quiz_mode="random",
+        topic_id=topic_id,
     )
     logger.info(
-        "USER {} | Случайный тест начат | вопросов={}",
-        callback.from_user.id, len(question_ids)
+        "USER {} | Случайный тест начат | topic_id={}, вопросов={}",
+        callback.from_user.id, topic_id, len(question_ids)
     )
     await _show_question(
         callback, state, question_ids[0], 0, len(question_ids)
@@ -575,6 +579,7 @@ async def _show_result(callback: CallbackQuery, state: FSMContext):
     correct = data["correct_count"]
     lesson_id = data.get("lesson_id")
     quiz_mode = data.get("quiz_mode", "lesson")
+    topic_id = data.get("topic_id")
     await state.clear()
 
     pct = round(correct / total * 100) if total else 0
@@ -598,10 +603,10 @@ async def _show_result(callback: CallbackQuery, state: FSMContext):
         f"{grade}"
     )
     builder = InlineKeyboardBuilder()
-    if quiz_mode == "random":
+    if quiz_mode == "random" and topic_id is not None:
         builder.button(
             text="🔄 Ещё случайный тест",
-            callback_data="user:random_quiz_menu"
+            callback_data=f"user:random_quiz_menu:{topic_id}"
         )
     elif lesson_id is not None:
         builder.button(

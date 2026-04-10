@@ -266,16 +266,19 @@ async def save_progress(
 
 # ── Случайные вопросы для теста ───────────────────────────────────────────────
 
-async def get_random_questions_for_quiz(
-    session: AsyncSession, count: int = 10
+async def get_random_questions_for_topic(
+    session: AsyncSession, topic_id: int, count: int = 10
 ) -> list[Question]:
     """
-    Возвращает случайные вопросы из всей базы.
+    Возвращает случайные вопросы из указанной темы.
     Берёт только те, у которых есть хотя бы 1 правильный
     и хотя бы 1 неправильный ответ в пуле.
     """
     result = await session.execute(
-        select(Question).options(selectinload(Question.answers))
+        select(Question)
+        .join(Lesson, Question.lesson_id == Lesson.id)
+        .where(Lesson.topic_id == topic_id)
+        .options(selectinload(Question.answers))
     )
     all_questions = list(result.scalars().all())
 

@@ -35,21 +35,18 @@ def user_menu_kb() -> InlineKeyboardMarkup:
     builder.button(
         text="📖 Начать обучение", callback_data="user:topics:0"
     )
-    builder.button(
-        text="🎲 Случайный тест", callback_data="user:random_quiz_menu"
-    )
     builder.adjust(1)
     return builder.as_markup()
 
 
-def random_quiz_count_kb() -> InlineKeyboardMarkup:
+def random_quiz_count_kb(topic_id: int) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     for n in [5, 10, 20]:
         builder.button(
             text=f"🎲 {n} вопросов",
-            callback_data=f"user:random_quiz:{n}"
+            callback_data=f"user:random_quiz:{topic_id}:{n}"
         )
-    builder.button(text="Назад", callback_data="user:back_to_start")
+    builder.button(text="🔙 К урокам", callback_data=f"user:lessons:{topic_id}:0")
     builder.adjust(1)
     return builder.as_markup()
 
@@ -95,6 +92,9 @@ def user_lessons_kb(
     if nav:
         builder.row(*nav)
 
+    builder.row(InlineKeyboardButton(
+        text="🎲 Случайный тест", callback_data=f"user:random_quiz_menu:{topic_id}"
+    ))
     builder.row(InlineKeyboardButton(
         text="🔙 К темам", callback_data="user:topics:0"
     ))
