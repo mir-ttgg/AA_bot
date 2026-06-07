@@ -22,30 +22,32 @@ router = Router()
 _PHOTO_CACHE: dict[str, str] = {}
 
 
-async def _send_question(message: Message, index: int) -> None:
-    """Отправляет новое сообщение с ЭКГ-вопросом онбординга."""
-    q = content.ONBOARDING_QUESTIONS[index]
-    total = len(content.ONBOARDING_QUESTIONS)
-    caption = (
-        f"<b>ЭКГ №{index + 1}/{total}</b>\n\n{q['question']}"
-    )
-    kb = onboarding_answer_kb()
-
-    cached = _PHOTO_CACHE.get(q["image"])
+async def _send_photo(message: Message, filename: str, caption: str, kb) -> None:
+    """Шлёт фото из assets/onboarding с подписью; кэширует file_id.
+    Если файла нет — отправляет подпись текстом."""
+    cached = _PHOTO_CACHE.get(filename)
     if cached:
         await message.answer_photo(cached, caption=caption, reply_markup=kb)
         return
 
-    path = content.ASSETS_DIR / q["image"]
+    path = content.ASSETS_DIR / filename
     if path.exists():
         sent = await message.answer_photo(
             FSInputFile(path), caption=caption, reply_markup=kb
         )
         if sent.photo:
-            _PHOTO_CACHE[q["image"]] = sent.photo[-1].file_id
+            _PHOTO_CACHE[filename] = sent.photo[-1].file_id
     else:
-        logger.warning("Нет файла ЭКГ для онбординга: {}", path)
+        logger.warning("Нет файла для онбординга: {}", path)
         await message.answer(caption, reply_markup=kb)
+
+
+async def _send_question(message: Message, index: int) -> None:
+    """Отправляет новое сообщение с ЭКГ-вопросом онбординга."""
+    q = content.ONBOARDING_QUESTIONS[index]
+    total = len(content.ONBOARDING_QUESTIONS)
+    caption = f"<b>ЭКГ №{index + 1}/{total}</b>\n\n{q['question']}"
+    await _send_photo(message, q["image"], caption, onboarding_answer_kb())
 
 
 # ── Старт онбординга (кнопка «Начать!») ───────────────────────────────────────
@@ -111,8 +113,11 @@ async def onb_next(callback: CallbackQuery, state: FSMContext):
 @router.callback_query(UserStates.onboarding, F.data == "onb:tutorial")
 async def onb_tutorial(callback: CallbackQuery, state: FSMContext):
     await safe_delete(callback.message)
-    await callback.message.answer(
-        content.TUTORIAL_TEXT, reply_markup=onboarding_tutorial_kb()
+    await _send_photo(
+        callback.message,
+        content.TUTORIAL_IMAGE,
+        content.TUTORIAL_TEXT,
+        onboarding_tutorial_kb(),
     )
     await callback.answer()
 

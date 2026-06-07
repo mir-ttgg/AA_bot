@@ -7,6 +7,9 @@ from services import emoji
 # Папка с картинками онбординга. Положи сюда файлы ecg1.jpg / ecg2.jpg / ecg3.jpg
 ASSETS_DIR = Path(__file__).resolve().parent.parent / "assets" / "onboarding"
 
+# Картинка-схема для обучающего экрана (показывается с TUTORIAL_TEXT)
+TUTORIAL_IMAGE = "tutorial.jpg"
+
 
 # ── Приветствие ───────────────────────────────────────────────────────────────
 

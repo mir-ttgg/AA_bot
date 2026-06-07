@@ -22,7 +22,7 @@ from keyboards.keyboards_user import (
 )
 from states import UserStates
 from services import emoji
-from services.ui import show, safe_delete
+from services.ui import show, safe_delete, reveal_over_photo, clear_aux_photo
 
 router = Router()
 
@@ -165,15 +165,14 @@ async def _render_feedback(
     )
     kb = duty_next_kb(is_last)
     msg = callback.message
-    if msg.photo and len(body) <= _CAPTION_LIMIT:
-        await msg.edit_caption(caption=body, reply_markup=kb)
-    elif msg.photo:
-        # Разбор не влезает в подпись к фото — отправляем отдельным
-        # текстом (HTML нельзя обрезать — это ломает теги).
-        await safe_delete(msg)
-        await msg.answer(body, reply_markup=kb)
+    if msg.photo:
+        # Влезает в подпись — фото и разбор вместе; иначе фото остаётся,
+        # а разбор уходит отдельным сообщением (id фото — на очистку).
+        aux = await reveal_over_photo(msg, [body], body, kb)
     else:
         await msg.edit_text(body, reply_markup=kb)
+        aux = None
+    await state.update_data(aux_photo_id=aux)
 
 
 async def _score(
@@ -286,6 +285,7 @@ async def duty_submit(callback: CallbackQuery, state: FSMContext):
 async def duty_next(callback: CallbackQuery, state: FSMContext):
     data = await state.get_data()
     next_index = data["current_index"] + 1
+    await clear_aux_photo(callback, state)
     await safe_delete(callback.message)
     await _send_question(callback.message, state, next_index)
     await callback.answer()
@@ -295,6 +295,7 @@ async def duty_next(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(UserStates.in_duty, F.data == "duty:result")
 async def duty_result(callback: CallbackQuery, state: FSMContext):
+    await clear_aux_photo(callback, state)
     await _finish(callback.message, state, user_id=callback.from_user.id)
     await callback.answer()
 
@@ -370,6 +371,7 @@ async def duty_exit(callback: CallbackQuery, state: FSMContext):
 async def duty_exit_cancel(callback: CallbackQuery, state: FSMContext):
     data = await state.get_data()
     index = data.get("current_index", 0)
+    await clear_aux_photo(callback, state)
     await safe_delete(callback.message)
     await _send_question(callback.message, state, index)
     await callback.answer()
@@ -377,6 +379,7 @@ async def duty_exit_cancel(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(UserStates.in_duty, F.data == "duty:exit_confirm")
 async def duty_exit_confirm(callback: CallbackQuery, state: FSMContext):
+    await clear_aux_photo(callback, state)
     await state.clear()
     logger.info("USER {} | Дежурство прервано", callback.from_user.id)
     await show(

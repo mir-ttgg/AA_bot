@@ -1,5 +1,6 @@
 from aiogram import Router, F
 from aiogram.types import CallbackQuery, Message
+from aiogram.fsm.context import FSMContext
 from loguru import logger
 
 from database.session import SessionLocal
@@ -12,7 +13,7 @@ from keyboards.keyboards_user import (
     library_browse_kb,
     main_menu_kb,
 )
-from services.ui import show, safe_delete
+from services.ui import show, safe_delete, reveal_over_photo, clear_aux_photo
 
 router = Router()
 
@@ -84,7 +85,8 @@ async def _send_browse(message: Message, topic_id: int, index: int) -> None:
 
 @router.callback_query(F.data == "menu:library")
 @router.callback_query(F.data.startswith("lib:topics:"))
-async def lib_topics(callback: CallbackQuery):
+async def lib_topics(callback: CallbackQuery, state: FSMContext):
+    await clear_aux_photo(callback, state)
     page = 0
     if callback.data.startswith("lib:topics:"):
         page = int(callback.data.split(":")[2])
@@ -112,12 +114,13 @@ async def lib_topics(callback: CallbackQuery):
 # ── Открыть тему (первая ЭКГ) ─────────────────────────────────────────────────
 
 @router.callback_query(F.data.startswith("lib:open:"))
-async def lib_open(callback: CallbackQuery):
+async def lib_open(callback: CallbackQuery, state: FSMContext):
     topic_id = int(callback.data.split(":")[2])
     logger.info(
         "USER {} | Библиотека: открыта тема {}",
         callback.from_user.id, topic_id
     )
+    await clear_aux_photo(callback, state)
     await safe_delete(callback.message)
     await _send_browse(callback.message, topic_id, 0)
     await callback.answer()
@@ -126,10 +129,11 @@ async def lib_open(callback: CallbackQuery):
 # ── Навигация Дальше/Предыдущий ───────────────────────────────────────────────
 
 @router.callback_query(F.data.startswith("lib:nav:"))
-async def lib_nav(callback: CallbackQuery):
+async def lib_nav(callback: CallbackQuery, state: FSMContext):
     parts = callback.data.split(":")
     topic_id = int(parts[2])
     index = int(parts[3])
+    await clear_aux_photo(callback, state)
     await safe_delete(callback.message)
     await _send_browse(callback.message, topic_id, index)
     await callback.answer()
@@ -138,7 +142,7 @@ async def lib_nav(callback: CallbackQuery):
 # ── Показать ответ ────────────────────────────────────────────────────────────
 
 @router.callback_query(F.data.startswith("lib:show:"))
-async def lib_show(callback: CallbackQuery):
+async def lib_show(callback: CallbackQuery, state: FSMContext):
     parts = callback.data.split(":")
     topic_id = int(parts[2])
     index = int(parts[3])
@@ -158,15 +162,11 @@ async def lib_show(callback: CallbackQuery):
 
     msg = callback.message
     if msg.photo:
+        # Влезает — фото с подписью (полная, иначе без текста вопроса);
+        # не влезает — фото остаётся, разбор уходит отдельным сообщением.
         short = _revealed_text(question, index, total, include_question=False)
-        if len(full) <= _CAPTION_LIMIT:
-            await msg.edit_caption(caption=full, reply_markup=kb)
-        elif len(short) <= _CAPTION_LIMIT:
-            await msg.edit_caption(caption=short, reply_markup=kb)
-        else:
-            # Разбор не влезает в подпись — отдаём отдельным текстом
-            await safe_delete(msg)
-            await msg.answer(full, reply_markup=kb)
+        aux = await reveal_over_photo(msg, [full, short], full, kb)
+        await state.update_data(aux_photo_id=aux)
     else:
         await msg.edit_text(full, reply_markup=kb)
     await callback.answer()
