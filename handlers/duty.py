@@ -165,8 +165,13 @@ async def _render_feedback(
     )
     kb = duty_next_kb(is_last)
     msg = callback.message
-    if msg.photo:
-        await msg.edit_caption(caption=_trim_caption(body), reply_markup=kb)
+    if msg.photo and len(body) <= _CAPTION_LIMIT:
+        await msg.edit_caption(caption=body, reply_markup=kb)
+    elif msg.photo:
+        # Разбор не влезает в подпись к фото — отправляем отдельным
+        # текстом (HTML нельзя обрезать — это ломает теги).
+        await safe_delete(msg)
+        await msg.answer(body, reply_markup=kb)
     else:
         await msg.edit_text(body, reply_markup=kb)
 

@@ -24,27 +24,28 @@ def _correct_answer_text(question) -> str:
     return ", ".join(correct) if correct else "—"
 
 
-def _browse_text(
-    question, index: int, total: int, reveal: bool, for_caption: bool
+def _question_text(question, index: int, total: int) -> str:
+    return f"<b>ЭКГ {index + 1}/{total}</b>\n\n{question.text}"
+
+
+def _question_caption(question, index: int, total: int) -> str:
+    """Подпись к фото (вопрос). Тег <b> закрыт в начале, хвост резать
+    безопасно."""
+    text = _question_text(question, index, total)
+    if len(text) > _CAPTION_LIMIT:
+        text = text[:_CAPTION_LIMIT - 1] + "…"
+    return text
+
+
+def _revealed_text(
+    question, index: int, total: int, include_question: bool
 ) -> str:
     header = f"<b>ЭКГ {index + 1}/{total}</b>"
-    base = f"{header}\n\n{question.text}"
-
-    if not reveal:
-        if for_caption and len(base) > _CAPTION_LIMIT:
-            return base[:_CAPTION_LIMIT - 1] + "…"
-        return base
-
     answer = f"<b>Ответ:</b> {_correct_answer_text(question)}"
     comment = f"\n\n<i>{question.comment}</i>" if question.comment else ""
-    full = f"{base}\n\n{answer}{comment}"
-    if not for_caption or len(full) <= _CAPTION_LIMIT:
-        return full
-    # Для подписи к фото — без текста вопроса (ЭКГ и так на картинке)
-    short = f"{header}\n\n{answer}{comment}"
-    if len(short) <= _CAPTION_LIMIT:
-        return short
-    return short[:_CAPTION_LIMIT - 1] + "…"
+    if include_question:
+        return f"{header}\n\n{question.text}\n\n{answer}{comment}"
+    return f"{header}\n\n{answer}{comment}"
 
 
 async def _send_browse(message: Message, topic_id: int, index: int) -> None:
@@ -65,19 +66,17 @@ async def _send_browse(message: Message, topic_id: int, index: int) -> None:
     kb = library_browse_kb(topic_id, index, total, revealed=False)
 
     if question.image_file_id:
-        caption = _browse_text(question, index, total, False, for_caption=True)
         try:
             await message.answer_photo(
-                question.image_file_id, caption=caption, reply_markup=kb
+                question.image_file_id,
+                caption=_question_caption(question, index, total),
+                reply_markup=kb,
             )
             return
         except Exception:
-            logger.warning(
-                "Невалидный file_id ЭКГ id={}", question.id
-            )
+            logger.warning("Невалидный file_id ЭКГ id={}", question.id)
     await message.answer(
-        _browse_text(question, index, total, False, for_caption=False),
-        reply_markup=kb,
+        _question_text(question, index, total), reply_markup=kb
     )
 
 
@@ -155,16 +154,19 @@ async def lib_show(callback: CallbackQuery):
     question = questions[index]
     total = len(questions)
     kb = library_browse_kb(topic_id, index, total, revealed=True)
+    full = _revealed_text(question, index, total, include_question=True)
 
     msg = callback.message
     if msg.photo:
-        await msg.edit_caption(
-            caption=_browse_text(question, index, total, True, True),
-            reply_markup=kb,
-        )
+        short = _revealed_text(question, index, total, include_question=False)
+        if len(full) <= _CAPTION_LIMIT:
+            await msg.edit_caption(caption=full, reply_markup=kb)
+        elif len(short) <= _CAPTION_LIMIT:
+            await msg.edit_caption(caption=short, reply_markup=kb)
+        else:
+            # Разбор не влезает в подпись — отдаём отдельным текстом
+            await safe_delete(msg)
+            await msg.answer(full, reply_markup=kb)
     else:
-        await msg.edit_text(
-            _browse_text(question, index, total, True, False),
-            reply_markup=kb,
-        )
+        await msg.edit_text(full, reply_markup=kb)
     await callback.answer()
