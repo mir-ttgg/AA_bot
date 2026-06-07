@@ -9,7 +9,7 @@ from database.crud import (
     get_questions_for_topic,
 )
 from keyboards.keyboards_user import (
-    library_topics_kb,
+    library_kb,
     library_browse_kb,
     main_menu_kb,
 )
@@ -61,7 +61,7 @@ async def _send_browse(message: Message, topic_id: int, index: int) -> None:
     if not questions:
         await message.answer(
             "В этой теме пока нет ЭКГ.",
-            reply_markup=library_topics_kb([], 0),
+            reply_markup=library_kb([]),
         )
         return
 
@@ -91,14 +91,16 @@ async def _send_browse(message: Message, topic_id: int, index: int) -> None:
 @router.callback_query(F.data.startswith("lib:topics:"))
 async def lib_topics(callback: CallbackQuery, state: FSMContext):
     await clear_aux_photo(callback, state)
-    page = 0
-    if callback.data.startswith("lib:topics:"):
-        page = int(callback.data.split(":")[2])
 
     async with SessionLocal() as session:
         topics = await get_topics_with_questions(session)
+        topics_data = []
+        for topic in topics:
+            questions = await get_questions_for_topic(session, topic.id)
+            if questions:
+                topics_data.append((topic.id, topic.title, len(questions)))
 
-    if not topics:
+    if not topics_data:
         await show(
             callback,
             "<b>Библиотека</b>\n\nЭКГ ещё не добавлены. Загляни позже!",
@@ -109,24 +111,26 @@ async def lib_topics(callback: CallbackQuery, state: FSMContext):
 
     await show(
         callback,
-        "<b>Список всех примеров ЭКГ</b>\n\nВыбери тему:",
-        reply_markup=library_topics_kb(topics, page),
+        "<b>Библиотека</b>\n\nВыбери ЭКГ:",
+        reply_markup=library_kb(topics_data),
     )
     await callback.answer()
 
 
-# ── Открыть тему (первая ЭКГ) ─────────────────────────────────────────────────
+# ── Открыть конкретную ЭКГ темы ───────────────────────────────────────────────
 
 @router.callback_query(F.data.startswith("lib:open:"))
 async def lib_open(callback: CallbackQuery, state: FSMContext):
-    topic_id = int(callback.data.split(":")[2])
+    parts = callback.data.split(":")
+    topic_id = int(parts[2])
+    index = int(parts[3]) if len(parts) > 3 else 0
     logger.info(
-        "USER {} | Библиотека: открыта тема {}",
-        callback.from_user.id, topic_id
+        "USER {} | Библиотека: тема {}, ЭКГ {}",
+        callback.from_user.id, topic_id, index + 1
     )
     await clear_aux_photo(callback, state)
     await safe_delete(callback.message)
-    await _send_browse(callback.message, topic_id, 0)
+    await _send_browse(callback.message, topic_id, index)
     await callback.answer()
 
 

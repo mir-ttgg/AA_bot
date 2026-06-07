@@ -78,21 +78,22 @@ def main_menu_kb() -> InlineKeyboardMarkup:
 
 # ── Библиотека ────────────────────────────────────────────────────────────────
 
-def library_topics_kb(topics: list, page: int = 0) -> InlineKeyboardMarkup:
+def library_kb(topics_data: list) -> InlineKeyboardMarkup:
+    """Единый список: тема (заголовок-разделитель) и её ЭКГ кнопками.
+
+    topics_data — список кортежей (topic_id, title, count).
+    Заголовок темы — некликабельная кнопка (noop), под ней ЭКГ 1..count.
+    """
     builder = InlineKeyboardBuilder()
-    for topic in _paginate(topics, page):
-        builder.button(
-            text=topic.title,
-            callback_data=f"lib:open:{topic.id}"
-        )
-    builder.adjust(1)
-    nav = _nav_row(
-        topics, page,
-        prev_cb=f"lib:topics:{page - 1}",
-        next_cb=f"lib:topics:{page + 1}",
-    )
-    if nav:
-        builder.row(*nav)
+    for topic_id, title, count in topics_data:
+        builder.row(InlineKeyboardButton(
+            text=f"— {title} —", callback_data="noop"
+        ))
+        for i in range(count):
+            builder.row(InlineKeyboardButton(
+                text=f"ЭКГ {i + 1}",
+                callback_data=f"lib:open:{topic_id}:{i}"
+            ))
     builder.row(InlineKeyboardButton(
         text="Главное меню", callback_data="menu:main"
     ))
