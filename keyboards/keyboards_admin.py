@@ -36,6 +36,9 @@ def menu_admin() -> InlineKeyboardMarkup:
     builder.button(
         text="Режим пользователя", callback_data="menu:main"
     )
+    builder.button(
+        text="Проверить онбординг", callback_data="onb:preview"
+    )
     builder.adjust(1)
     return builder.as_markup()
 

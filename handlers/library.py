@@ -13,6 +13,7 @@ from keyboards.keyboards_user import (
     library_browse_kb,
     main_menu_kb,
 )
+from services import emoji
 from services.ui import show, safe_delete, reveal_over_photo, clear_aux_photo
 
 router = Router()
@@ -42,8 +43,11 @@ def _revealed_text(
     question, index: int, total: int, include_question: bool
 ) -> str:
     header = f"<b>ЭКГ {index + 1}/{total}</b>"
-    answer = f"<b>Ответ:</b> {_correct_answer_text(question)}"
-    comment = f"\n\n<i>{question.comment}</i>" if question.comment else ""
+    answer = f"{emoji.EMOJI_YES} <b>Ответ:</b> {_correct_answer_text(question)}"
+    comment = (
+        f"\n\n{emoji.EMOJI_WHITE_2} <i>{question.comment}</i>"
+        if question.comment else ""
+    )
     if include_question:
         return f"{header}\n\n{question.text}\n\n{answer}{comment}"
     return f"{header}\n\n{answer}{comment}"

@@ -153,12 +153,18 @@ async def _render_feedback(
     is_last = (index + 1) >= total
 
     if is_correct:
-        feedback = "<b>Правильно!</b>"
+        feedback = f"{emoji.EMOJI_YES} <b>Правильно!</b>"
     else:
         joined = ", ".join(f"<b>{t}</b>" for t in correct_texts) or "—"
-        feedback = f"<b>Неправильно!</b>\nПравильный ответ: {joined}"
+        feedback = (
+            f"{emoji.EMOJI_NO} <b>Неправильно!</b>\n"
+            f"Правильный ответ: {joined}"
+        )
 
-    comment = f"\n\n<i>{question.comment}</i>" if question.comment else ""
+    comment = (
+        f"\n\n{emoji.EMOJI_WHITE_2} <i>{question.comment}</i>"
+        if question.comment else ""
+    )
     body = (
         f"<b>Пациент {index + 1}/{total}</b>\n\n"
         f"{question.text}\n\n{feedback}{comment}"
@@ -384,7 +390,7 @@ async def duty_exit_confirm(callback: CallbackQuery, state: FSMContext):
     logger.info("USER {} | Дежурство прервано", callback.from_user.id)
     await show(
         callback,
-        "<b>Главное меню</b>\n\nВыбери режим:",
+        f"{emoji.EMOJI_HOME} <b>Главное меню</b>\n\nВыбери режим:",
         reply_markup=main_menu_kb(),
     )
     await callback.answer()

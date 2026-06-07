@@ -16,7 +16,7 @@ from keyboards.keyboards_user import (
     profile_kb,
     back_to_menu_kb,
 )
-from services import content
+from services import content, emoji
 from services.ui import show
 
 router = Router()
@@ -29,7 +29,7 @@ async def open_main_menu(callback: CallbackQuery, state: FSMContext):
     await state.clear()
     await show(
         callback,
-        "<b>Главное меню</b>\n\nВыбери режим:",
+        f"{emoji.EMOJI_HOME} <b>Главное меню</b>\n\nВыбери режим:",
         reply_markup=main_menu_kb(),
     )
     await callback.answer()
@@ -87,7 +87,7 @@ async def show_ranks(callback: CallbackQuery):
 @router.callback_query(F.data == "prof:support")
 async def show_support(callback: CallbackQuery):
     text = (
-        "<b>Поддержка</b>\n\n"
+        f"{emoji.EMOJI_WHITE_2} <b>Поддержка</b>\n\n"
         "Есть вопрос, нашёл ошибку в разборе или хочешь предложить "
         f"идею? Пиши: {SUPPORT_CONTACT}"
     )

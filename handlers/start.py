@@ -41,9 +41,21 @@ async def cmd_start(message: Message, is_admin: bool, state: FSMContext):
     else:
         logger.info("USER  /start (меню) | {} {}", user.id, tag)
         await message.answer(
-            "<b>Главное меню</b>\n\nВыбери режим:",
+            f"{emoji.EMOJI_HOME} <b>Главное меню</b>\n\nВыбери режим:",
             reply_markup=main_menu_kb(),
         )
+
+
+@router.message(Command("onboarding"))
+async def cmd_onboarding(message: Message, is_admin: bool, state: FSMContext):
+    """Запуск онбординга для проверки (только для админов)."""
+    if not is_admin:
+        return
+    await state.clear()
+    logger.info("ADMIN /onboarding | {}", message.from_user.id)
+    await message.answer(
+        content.WELCOME_TEXT, reply_markup=start_button_kb()
+    )
 
 
 @router.message(Command("help"))
@@ -60,6 +72,7 @@ async def cmd_help(message: Message, is_admin: bool):
             "• Ответы можно редактировать: менять текст, переключать правильность, удалять\n\n"
             "<b>Команды:</b>\n"
             "/start — главное меню\n"
+            "/onboarding — проверить вступительный тест\n"
             "/help — эта подсказка\n\n"
             "<b>Подсказки:</b>\n"
             "• Нажмите на вариант ответа, чтобы открыть его настройки\n"

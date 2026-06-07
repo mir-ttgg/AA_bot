@@ -1,11 +1,13 @@
 from aiogram import Router, F
 from aiogram.types import CallbackQuery, FSInputFile, Message
 from aiogram.fsm.context import FSMContext
+from aiogram.exceptions import TelegramBadRequest
 from loguru import logger
 
 from database.session import SessionLocal
 from database.crud import mark_onboarded
 from keyboards.keyboards_user import (
+    start_button_kb,
     onboarding_answer_kb,
     onboarding_next_kb,
     onboarding_result_kb,
@@ -13,7 +15,7 @@ from keyboards.keyboards_user import (
     main_menu_kb,
 )
 from states import UserStates
-from services import content
+from services import content, emoji
 from services.ui import safe_delete
 
 router = Router()
@@ -50,6 +52,19 @@ async def _send_question(message: Message, index: int) -> None:
     await _send_photo(message, q["image"], caption, onboarding_answer_kb())
 
 
+# ── Предпросмотр онбординга (для админов) ─────────────────────────────────────
+
+@router.callback_query(F.data == "onb:preview")
+async def onb_preview(callback: CallbackQuery, state: FSMContext):
+    """Показывает онбординг с самого начала (приветствие + «Начать!»)."""
+    await state.clear()
+    await safe_delete(callback.message)
+    await callback.message.answer(
+        content.WELCOME_TEXT, reply_markup=start_button_kb()
+    )
+    await callback.answer()
+
+
 # ── Старт онбординга (кнопка «Начать!») ───────────────────────────────────────
 
 @router.callback_query(F.data == "onb:start")
@@ -76,10 +91,19 @@ async def onb_answer(callback: CallbackQuery, state: FSMContext):
         correct_count += 1
     await state.update_data(onb_correct=correct_count)
 
-    await safe_delete(callback.message)
-    await callback.message.answer(
-        q["explanation"], reply_markup=onboarding_next_kb()
-    )
+    # Оставляем ЭКГ на экране: меняем подпись на разбор (он влезает в лимит).
+    explanation = q["explanation"]
+    kb = onboarding_next_kb()
+    msg = callback.message
+    if msg.photo:
+        try:
+            await msg.edit_caption(caption=explanation, reply_markup=kb)
+        except TelegramBadRequest:
+            # на всякий случай: разбор не влез — оставляем фото, текст ниже
+            await msg.edit_reply_markup(reply_markup=None)
+            await msg.answer(explanation, reply_markup=kb)
+    else:
+        await msg.edit_text(explanation, reply_markup=kb)
     await callback.answer()
 
 
@@ -130,9 +154,14 @@ async def onb_finish(callback: CallbackQuery, state: FSMContext):
     async with SessionLocal() as session:
         await mark_onboarded(session, callback.from_user.id)
     logger.info("USER {} | Онбординг пройден", callback.from_user.id)
-    await safe_delete(callback.message)
+    # Обучающее сообщение со схемой оставляем в чате — только убираем кнопку,
+    # чтобы её нельзя было нажать повторно.
+    try:
+        await callback.message.edit_reply_markup(reply_markup=None)
+    except Exception:
+        pass
     await callback.message.answer(
-        "<b>Главное меню</b>\n\nВыбери режим:",
+        f"{emoji.EMOJI_HOME} <b>Главное меню</b>\n\nВыбери режим:",
         reply_markup=main_menu_kb(),
     )
     await callback.answer()
