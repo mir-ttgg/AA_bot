@@ -1,22 +1,25 @@
 from aiogram import Router
 from aiogram.types import Message
 from aiogram.filters import CommandStart, Command
+from aiogram.fsm.context import FSMContext
 from loguru import logger
 
 from database.session import SessionLocal
 from database.crud import get_or_create_user
 from keyboards.keyboards_admin import menu_admin
-from keyboards.keyboards_user import user_menu_kb
-from services import emoji
+from keyboards.keyboards_user import start_button_kb, main_menu_kb
+from services import emoji, content
 
 router = Router()
 
 
 @router.message(CommandStart())
-async def cmd_start(message: Message, is_admin: bool):
+async def cmd_start(message: Message, is_admin: bool, state: FSMContext):
+    await state.clear()
     user = message.from_user
     async with SessionLocal() as session:
-        await get_or_create_user(session, user.id, user.username)
+        db_user = await get_or_create_user(session, user.id, user.username)
+        onboarded = db_user.onboarded
 
     name = user.first_name or "Пользователь"
     tag = f"@{user.username}" if user.username else f"id={user.id}"
@@ -24,18 +27,22 @@ async def cmd_start(message: Message, is_admin: bool):
     if is_admin:
         logger.info("ADMIN /start | {} {}", user.id, tag)
         await message.answer(
-            f"{emoji.EMOJI_HELLO} <b>{name}</b>, добро пожаловать в панель администратора!{emoji.EMOJI_DANIL}\n"
-            "Выберите действие:",
+            f"{emoji.EMOJI_HELLO} <b>{name}</b>, добро пожаловать в панель "
+            f"администратора!{emoji.EMOJI_DANIL}\nВыберите действие:",
             reply_markup=menu_admin()
         )
-    else:
-        logger.info("USER  /start | {} {}", user.id, tag)
+        return
+
+    if not onboarded:
+        logger.info("USER  /start (онбординг) | {} {}", user.id, tag)
         await message.answer(
-            f"{emoji.EMOJI_HELLO} <b>{name}</b>, добро пожаловать в медицинский тренажёр!\n\n"
-            "Здесь ты можешь проходить тесты по медицинским темам "
-            "и отслеживать свой прогресс.\n\n"
-            "Нажми кнопку ниже, чтобы начать:",
-            reply_markup=user_menu_kb()
+            content.WELCOME_TEXT, reply_markup=start_button_kb()
+        )
+    else:
+        logger.info("USER  /start (меню) | {} {}", user.id, tag)
+        await message.answer(
+            "<b>Главное меню</b>\n\nВыбери режим:",
+            reply_markup=main_menu_kb(),
         )
 
 
@@ -62,18 +69,15 @@ async def cmd_help(message: Message, is_admin: bool):
     else:
         text = (
             f"{emoji.EMOGI_QUESTION} <b>Помощь</b>\n\n"
-            "<b>Как пользоваться тренажёром:</b>\n"
-            "• <b>Начать обучение</b> — выберите тему и урок, затем пройдите тест\n"
-            "• <b>Случайный тест</b> — доступен внутри каждой темы, вопросы из всех уроков темы\n\n"
-            "<b>Во время теста:</b>\n"
-            "• Выберите один вариант ответа из предложенных\n"
-            "• После ответа вы узнаете, были ли правы\n"
-            "• Кнопка <b>🏠 В меню</b> позволяет выйти из теста в любой момент\n\n"
+            "<b>Режимы тренировки:</b>\n"
+            "• <b>Библиотека</b> — листай ЭКГ по темам и жми "
+            "«Показать ответ», чтобы увидеть разбор\n"
+            "• <b>Дежурство</b> — выбери количество ЭКГ, отвечай на "
+            "вопросы и получай баллы в рейтинг\n"
+            "• <b>Профиль</b> — твой ранг, место в рейтинге, "
+            "статистика и поддержка\n\n"
             "<b>Команды:</b>\n"
             "/start — вернуться в главное меню\n"
-            "/help — эта подсказка\n\n"
-            "<b>Подсказки:</b>\n"
-            "• Результат показывается в конце каждого теста\n"
-            "• После теста можно пройти его повторно"
+            "/help — эта подсказка"
         )
     await message.answer(text)

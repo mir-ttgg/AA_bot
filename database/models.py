@@ -74,13 +74,17 @@ class User(Base):
     __tablename__ = "users"
 
     id: Mapped[int] = mapped_column(
-        BigInteger, primary_key=True) 
+        BigInteger, primary_key=True)
     username: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    onboarded: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False, server_default="false")
     created_at: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.now())
 
     progress: Mapped[list["UserProgress"]
                      ] = relationship(back_populates="user")
+    duty_sessions: Mapped[list["DutySession"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan")
 
 
 class UserProgress(Base):
@@ -101,3 +105,18 @@ class UserProgress(Base):
     user: Mapped["User"] = relationship(back_populates="progress")
     question: Mapped["Question"] = relationship(back_populates="user_progress")
     chosen_answer: Mapped["AnswerOption | None"] = relationship()
+
+
+class DutySession(Base):
+    """Одно завершённое дежурство пользователя (для рейтинга и статистики)."""
+    __tablename__ = "duty_sessions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    total: Mapped[int] = mapped_column(Integer, nullable=False)
+    correct: Mapped[int] = mapped_column(Integer, nullable=False)
+    finished_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now())
+
+    user: Mapped["User"] = relationship(back_populates="duty_sessions")

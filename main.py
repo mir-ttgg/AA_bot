@@ -15,15 +15,18 @@ from config import BOT_TOKEN
 from database.session import init_db
 from middlewares.adminmiddlewares import AdminMiddleware
 from middlewares.logging_middleware import LoggingMiddleware
-from handlers import start, topics_lessons_questions
-from handlers import admin_constructor, user_quiz
+from handlers import start, topics_lessons_questions, admin_constructor
+from handlers import onboarding, menu, library, duty
 
 dp = Dispatcher(storage=MemoryStorage())
 dp.include_routers(
     start.router,
     admin_constructor.router,
     topics_lessons_questions.router,
-    user_quiz.router,
+    onboarding.router,
+    menu.router,
+    library.router,
+    duty.router,
 )
 dp.update.middleware(LoggingMiddleware())
 dp.update.middleware(AdminMiddleware())

@@ -15,4 +15,6 @@ class AdminStates(StatesGroup):
 
 
 class UserStates(StatesGroup):
-    in_quiz = State()
+    onboarding = State()    # прохождение вступительного теста из 3 ЭКГ
+    library = State()       # просмотр ЭКГ в библиотеке
+    in_duty = State()       # дежурство (тест с баллами)

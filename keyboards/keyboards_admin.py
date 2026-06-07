@@ -34,7 +34,7 @@ def menu_admin() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.button(text="Конструктор тем", callback_data="topics:0")
     builder.button(
-        text="Режим пользователя", callback_data="user:topics:0"
+        text="Режим пользователя", callback_data="menu:main"
     )
     builder.adjust(1)
     return builder.as_markup()

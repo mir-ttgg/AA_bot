@@ -1,11 +1,12 @@
 import random
+from datetime import datetime, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from database.models import (
-    Topic, Lesson, Question, AnswerOption, User, UserProgress
+    Topic, Lesson, Question, AnswerOption, User, UserProgress, DutySession
 )
 
 
@@ -257,7 +258,17 @@ async def get_or_create_user(
         user = User(id=user_id, username=username)
         session.add(user)
         await session.commit()
+    elif username and user.username != username:
+        user.username = username
+        await session.commit()
     return user
+
+
+async def mark_onboarded(session: AsyncSession, user_id: int) -> None:
+    user = await session.get(User, user_id)
+    if user and not user.onboarded:
+        user.onboarded = True
+        await session.commit()
 
 
 # ── UserProgress ──────────────────────────────────────────────────────────────
@@ -306,3 +317,115 @@ async def get_random_questions_for_topic(
     if not valid:
         return []
     return random.sample(valid, min(count, len(valid)))
+
+
+# ── Библиотека: все ЭКГ темы (плоско, без уровня уроков) ──────────────────────
+
+async def get_questions_for_topic(
+    session: AsyncSession, topic_id: int
+) -> list[Question]:
+    """Все вопросы темы из всех её уроков, с подгруженными ответами."""
+    result = await session.execute(
+        select(Question)
+        .join(Lesson, Question.lesson_id == Lesson.id)
+        .where(Lesson.topic_id == topic_id)
+        .options(selectinload(Question.answers))
+        .order_by(Question.id)
+    )
+    return list(result.scalars().all())
+
+
+# ── Дежурство: случайные ЭКГ из всего банка ───────────────────────────────────
+
+async def get_random_questions_global(
+    session: AsyncSession, count: int = 10
+) -> list[Question]:
+    """Случайные вопросы из всех тем (для режима «Дежурство»)."""
+    result = await session.execute(
+        select(Question).options(selectinload(Question.answers))
+    )
+    all_questions = list(result.scalars().all())
+    valid = [
+        q for q in all_questions
+        if any(a.is_correct for a in q.answers)
+        and any(not a.is_correct for a in q.answers)
+    ]
+    if not valid:
+        return []
+    return random.sample(valid, min(count, len(valid)))
+
+
+# ── Статистика и рейтинг ──────────────────────────────────────────────────────
+
+async def save_duty_session(
+    session: AsyncSession, user_id: int, total: int, correct: int
+) -> DutySession:
+    record = DutySession(user_id=user_id, total=total, correct=correct)
+    session.add(record)
+    await session.commit()
+    return record
+
+
+async def get_user_stats(
+    session: AsyncSession, user_id: int
+) -> tuple[int, int]:
+    """Возвращает (всего разобрано, правильных) по UserProgress."""
+    total = func.count(UserProgress.id)
+    correct = func.count(UserProgress.id).filter(
+        UserProgress.is_correct.is_(True)
+    )
+    result = await session.execute(
+        select(total, correct).where(UserProgress.user_id == user_id)
+    )
+    row = result.one()
+    return int(row[0] or 0), int(row[1] or 0)
+
+
+async def get_best_duty(session: AsyncSession, user_id: int) -> int:
+    """Лучшая точность дежурства в процентах (0 если дежурств не было)."""
+    result = await session.execute(
+        select(func.max(DutySession.correct * 100.0 / DutySession.total))
+        .where(DutySession.user_id == user_id, DutySession.total > 0)
+    )
+    val = result.scalar()
+    return round(val) if val is not None else 0
+
+
+def _correct_counts_subquery(since: datetime | None = None):
+    """Подзапрос: user_id -> кол-во правильных ответов (опц. с даты)."""
+    query = (
+        select(
+            UserProgress.user_id.label("user_id"),
+            func.count(UserProgress.id).label("c"),
+        )
+        .where(UserProgress.is_correct.is_(True))
+    )
+    if since is not None:
+        query = query.where(UserProgress.answered_at >= since)
+    return query.group_by(UserProgress.user_id).subquery()
+
+
+async def _place_by_correct(
+    session: AsyncSession, user_id: int, since: datetime | None
+) -> int:
+    """Место пользователя в рейтинге по числу правильных ответов."""
+    counts = _correct_counts_subquery(since)
+    my_result = await session.execute(
+        select(counts.c.c).where(counts.c.user_id == user_id)
+    )
+    my_count = my_result.scalar() or 0
+    ahead_result = await session.execute(
+        select(func.count())
+        .select_from(counts)
+        .where(counts.c.c > my_count)
+    )
+    return int(ahead_result.scalar() or 0) + 1
+
+
+async def get_overall_place(session: AsyncSession, user_id: int) -> int:
+    return await _place_by_correct(session, user_id, since=None)
+
+
+async def get_weekly_place(session: AsyncSession, user_id: int) -> int:
+    since = datetime.utcnow() - timedelta(days=7)
+    return await _place_by_correct(session, user_id, since=since)
