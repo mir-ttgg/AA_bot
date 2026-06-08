@@ -45,7 +45,7 @@ def _revealed_text(
     header = f"<b>ЭКГ {index + 1}/{total}</b>"
     answer = f"{emoji.EMOJI_YES} <b>Ответ:</b> {_correct_answer_text(question)}"
     comment = (
-        f"\n\n{emoji.EMOJI_RED_2} <i>{question.comment}</i>"
+        f"\n\n💬 <i>{question.comment}</i>"
         if question.comment else ""
     )
     if include_question:
