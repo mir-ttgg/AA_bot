@@ -28,7 +28,7 @@ async def open_main_menu(callback: CallbackQuery, state: FSMContext):
     await state.clear()
     await show(
         callback,
-        f"{emoji.EMOJI_HOME} <b>Главное меню</b>\n\nВыбери режим:",
+        f"{emoji.EMOJI_RED_2} <b>Главное меню</b>\n\nВыбери режим:",
         reply_markup=main_menu_kb(),
     )
     await callback.answer()

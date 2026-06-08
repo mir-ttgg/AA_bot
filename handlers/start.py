@@ -41,7 +41,7 @@ async def cmd_start(message: Message, is_admin: bool, state: FSMContext):
     else:
         logger.info("USER  /start (меню) | {} {}", user.id, tag)
         await message.answer(
-            f"{emoji.EMOJI_HOME} <b>Главное меню</b>\n\nВыбери режим:",
+        f"{emoji.EMOJI_RED_2} <b>Главное меню</b>\n\nВыбери режим:",
             reply_markup=main_menu_kb(),
         )
 
