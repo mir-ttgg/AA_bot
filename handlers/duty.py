@@ -390,7 +390,7 @@ async def duty_exit_confirm(callback: CallbackQuery, state: FSMContext):
     logger.info("USER {} | Дежурство прервано", callback.from_user.id)
     await show(
         callback,
-        f"{emoji.EMOJI_HOME} <b>Главное меню</b>\n\nВыбери режим:",
+        f"{emoji.EMOJI_RED_2} <b>Главное меню</b>\n\nВыбери режим:",
         reply_markup=main_menu_kb(),
     )
     await callback.answer()
