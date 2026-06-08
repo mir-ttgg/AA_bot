@@ -9,7 +9,7 @@ from database.crud import (
     get_questions_for_topic,
 )
 from keyboards.keyboards_user import (
-    library_kb,
+    library_topics_kb,
     library_browse_kb,
     main_menu_kb,
 )
@@ -61,7 +61,7 @@ async def _send_browse(message: Message, topic_id: int, index: int) -> None:
     if not questions:
         await message.answer(
             "В этой теме пока нет ЭКГ.",
-            reply_markup=library_kb([]),
+            reply_markup=library_topics_kb([], 0),
         )
         return
 
@@ -91,16 +91,14 @@ async def _send_browse(message: Message, topic_id: int, index: int) -> None:
 @router.callback_query(F.data.startswith("lib:topics:"))
 async def lib_topics(callback: CallbackQuery, state: FSMContext):
     await clear_aux_photo(callback, state)
+    page = 0
+    if callback.data.startswith("lib:topics:"):
+        page = int(callback.data.split(":")[2])
 
     async with SessionLocal() as session:
         topics = await get_topics_with_questions(session)
-        topics_data = []
-        for topic in topics:
-            questions = await get_questions_for_topic(session, topic.id)
-            if questions:
-                topics_data.append((topic.id, topic.title, len(questions)))
 
-    if not topics_data:
+    if not topics:
         await show(
             callback,
             "<b>Библиотека</b>\n\nЭКГ ещё не добавлены. Загляни позже!",
@@ -111,8 +109,8 @@ async def lib_topics(callback: CallbackQuery, state: FSMContext):
 
     await show(
         callback,
-        "<b>Библиотека</b>\n\nВыбери ЭКГ:",
-        reply_markup=library_kb(topics_data),
+        "<b>Библиотека</b>\n\nВыбери тему:",
+        reply_markup=library_topics_kb(topics, page),
     )
     await callback.answer()
 
