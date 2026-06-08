@@ -18,7 +18,6 @@ from keyboards.keyboards_user import (
 )
 from services import content, emoji
 from services.ui import show
-
 router = Router()
 
 
@@ -57,7 +56,7 @@ async def open_profile(callback: CallbackQuery):
     rank = content.get_rank(accuracy)
 
     text = (
-        "<b>Профиль</b>\n\n"
+        f"{emoji.EMOJI_RED_3} <b>Профиль</b>\n\n"
         f"Имя пользователя: <b>{_display_name(callback)}</b>\n"
         f"Текущий ранг: <b>{rank}</b>\n\n"
         "<b>Рейтинг</b>\n"
@@ -87,7 +86,7 @@ async def show_ranks(callback: CallbackQuery):
 @router.callback_query(F.data == "prof:support")
 async def show_support(callback: CallbackQuery):
     text = (
-        f"{emoji.EMOJI_WHITE_2} <b>Поддержка</b>\n\n"
+        f"{emoji.EMOJI_RED_2} <b>Поддержка</b>\n\n"
         "Есть вопрос, нашёл ошибку в разборе или хочешь предложить "
         f"идею? Пиши: {SUPPORT_CONTACT}"
     )

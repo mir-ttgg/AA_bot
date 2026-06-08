@@ -41,7 +41,7 @@ async def topics_handler(callback: CallbackQuery):
     async with SessionLocal() as session:
         topics = await get_topics(session)
     await callback.message.edit_text(
-        f"{emoji.EMOJI_WHITE_1} <b>Темы:</b>",
+        f"{emoji.EMOJI_RED_1} <b>Темы:</b>",
         reply_markup=topics_kb(topics, page)
     )
 
@@ -54,7 +54,7 @@ async def lessons_handler(callback: CallbackQuery):
     async with SessionLocal() as session:
         lessons = await get_lessons(session, topic_id)
     await callback.message.edit_text(
-        f"{emoji.EMOJI_WHITE_2} <b>Уроки:</b>",
+        f"{emoji.EMOJI_RED_2} <b>Уроки:</b>",
         reply_markup=lessons_kb(topic_id, lessons, page)
     )
 
@@ -70,10 +70,10 @@ async def questions_handler(callback: CallbackQuery):
     kb = questions_kb(lesson_id, topic_id, questions, page)
     if callback.message.photo:
         await callback.message.delete()
-        await callback.message.answer(f"{emoji.EMOJI_WHITE_3} <b>Вопросы:</b>", reply_markup=kb)
+        await callback.message.answer(f"{emoji.EMOJI_RED_3} <b>Вопросы:</b>", reply_markup=kb)
     else:
         try:
-            await callback.message.edit_text(f"{emoji.EMOJI_WHITE_3}  <b>Вопросы:</b>", reply_markup=kb)
+            await callback.message.edit_text(f"{emoji.EMOJI_RED_3}  <b>Вопросы:</b>", reply_markup=kb)
         except TelegramBadRequest:
             pass
 
@@ -96,7 +96,7 @@ async def question_detail_handler(callback: CallbackQuery):
         answers_text += f"\n{mark} {ans.text}"
 
     text = (
-        f"{emoji.EMOJI_WHITE_3}  <b>Вопрос:</b>\n{question.text}"
+        f"{emoji.EMOJI_RED_3}  <b>Вопрос:</b>\n{question.text}"
         + (f"\n\n<b>Варианты ответов:</b>{answers_text}"
            if question.answers else "\n\n<i>Вариантов ответов пока нет</i>")
     )

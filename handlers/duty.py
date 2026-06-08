@@ -162,7 +162,7 @@ async def _render_feedback(
         )
 
     comment = (
-        f"\n\n{emoji.EMOJI_WHITE_2} <i>{question.comment}</i>"
+        f"\n\n{emoji.EMOJI_RED_2} <i>{question.comment}</i>"
         if question.comment else ""
     )
     body = (
